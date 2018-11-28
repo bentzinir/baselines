@@ -51,7 +51,7 @@ _game_envs['retro'] = {
 }
 
 
-def train(args, extra_args):
+def train(args, extra_args, logger):
     env_type, env_id = get_env_type(args.env)
     print('env_type: {}'.format(env_type))
 
@@ -72,12 +72,15 @@ def train(args, extra_args):
         if alg_kwargs.get('network') is None:
             alg_kwargs['network'] = get_default_network(env_type)
 
-    print('Training {} on {}:{} with arguments \n{}'.format(args.alg, env_type, env_id, alg_kwargs))
-
+    buff_line = 'Training {} on {}:{} with arguments \n{}'.format(args.alg, env_type, env_id, alg_kwargs)
+    # print(buff_line)
+    logger.log(buff_line)
     model = learn(
         env=env,
         seed=seed,
         total_timesteps=total_timesteps,
+        save_interval=args.save_interval,
+        load_path=args.load,
         **alg_kwargs
     )
 
@@ -93,7 +96,7 @@ def build_env(args):
 
     env_type, env_id = get_env_type(args.env)
 
-    if env_type in {'atari', 'retro'}:
+    if env_type in {'atari', 'retro', 'ghost'}:
         if alg == 'deepq':
             env = make_env(env_id, env_type, seed=seed, wrapper_kwargs={'frame_stack': True})
         elif alg == 'trpo_mpi':
@@ -119,6 +122,8 @@ def build_env(args):
 
 
 def get_env_type(env_id):
+    if env_id == 'BreakoutGhost':
+        return 'ghost', 'BreakoutGhost'
     if env_id in _game_envs.keys():
         env_type = env_id
         env_id = [g for g in _game_envs[env_type]][0]
@@ -134,7 +139,7 @@ def get_env_type(env_id):
 
 
 def get_default_network(env_type):
-    if env_type in {'atari', 'retro'}:
+    if env_type in {'atari', 'retro', 'ghost'}:
         return 'cnn'
     else:
         return 'mlp'
@@ -188,14 +193,21 @@ def main(args):
     args, unknown_args = arg_parser.parse_known_args(args)
     extra_args = parse_cmdline_kwargs(unknown_args)
 
+    import os, time
+    run_time = time.strftime("%Y-%m-%d-%H-%M-%S")
+    log_dir = os.path.join(os.getcwd(), "logs", run_time)
+
+    if args.play:
+        args.num_timesteps = 0
+        args.num_env = 1
     if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
         rank = 0
-        logger.configure()
+        logger.configure(log_dir)
     else:
         logger.configure(format_strs=[])
         rank = MPI.COMM_WORLD.Get_rank()
 
-    model, env = train(args, extra_args)
+    model, env = train(args, extra_args, logger)
     env.close()
 
     if args.save_path is not None and rank == 0:

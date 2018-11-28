@@ -25,8 +25,12 @@ def make_vec_env(env_id, env_type, num_env, seed, wrapper_kwargs=None, start_ind
     if wrapper_kwargs is None: wrapper_kwargs = {}
     mpi_rank = MPI.COMM_WORLD.Get_rank() if MPI else 0
     seed = seed + 10000 * mpi_rank if seed is not None else None
+    if env_type == 'ghost':
+        make = make_ghost_env
+    else:
+        make = make_env
     def make_thunk(rank):
-        return lambda: make_env(
+        return lambda: make(
             env_id=env_id,
             env_type=env_type,
             subrank = rank,
@@ -69,6 +73,19 @@ def make_env(env_id, env_type, subrank=0, seed=None, reward_scale=1.0, gamestate
 
     return env
 
+def make_ghost_env(env_id, env_type, subrank=0, seed=None, reward_scale=1.0, gamestate=None, wrapper_kwargs={}):
+    mpi_rank = MPI.COMM_WORLD.Get_rank() if MPI else 0
+    import sys
+    sys.path.append("/home/nir/work/git/ghost_imitation")
+    from breakout_ghost import BreakoutGhost
+    from arg_parser import arg_parser
+    ghost_args = arg_parser([])
+    ghost_args.debug = False
+    ghost_args.expert_dir = '/home/nir/work/git/ghost_imitation/data_serialized'
+    ghost_args.full_trajs = True
+    # ghost_args.reward_scale = 0.1
+    env = BreakoutGhost(**ghost_args.__dict__)
+    return env
 
 def make_mujoco_env(env_id, seed, reward_scale=1.0):
     """
@@ -122,7 +139,7 @@ def common_arg_parser():
     Create an argparse.ArgumentParser for run_mujoco.py.
     """
     parser = arg_parser()
-    parser.add_argument('--env', help='environment ID', type=str, default='Reacher-v2')
+    parser.add_argument('--env', help='environment ID', type=str, default='BreakoutNoFrameskip-v4')
     parser.add_argument('--seed', help='RNG seed', type=int, default=None)
     parser.add_argument('--alg', help='Algorithm', type=str, default='ppo2')
     parser.add_argument('--num_timesteps', type=float, default=1e6),
@@ -133,7 +150,17 @@ def common_arg_parser():
     parser.add_argument('--save_path', help='Path to save trained model to', default=None, type=str)
     parser.add_argument('--save_video_interval', help='Save video every x steps (0 = disabled)', default=0, type=int)
     parser.add_argument('--save_video_length', help='Length of recorded video. Default: 200', default=200, type=int)
+    parser.add_argument('--load', help='Load trained model', default=None, type=str)
+    parser.add_argument('--save_interval', help='Interval to save models', type=int, default=0)
+    parser.add_argument('--dump', help='Number of examples to dump', default=False, action='store_true')
     parser.add_argument('--play', default=False, action='store_true')
+    parser.add_argument('--game_count', help='Number of games to play', type=int, default=10)
+    parser.add_argument('--imitation', help='Imitation mode', default=False, action='store_true')
+    parser.add_argument('--keyboard', help='keyboard breakpoint for disaply', default=False, action='store_true')
+    parser.add_argument('--expert_dir', help='Path to expert examples', type=str, default=None)
+    parser.add_argument('--classification_network', help='Classification network type', type=str, default="cnn")
+    parser.add_argument('--human', help='Keyboard control', default=False, action='store_true')
+    parser.add_argument('--deterministic', help='Deterministic policy', default=False, action='store_true')
     return parser
 
 def robotics_arg_parser():
