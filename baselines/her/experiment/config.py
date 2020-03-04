@@ -11,6 +11,13 @@ DEFAULT_ENV_PARAMS = {
     'FetchReach-v1': {
         'n_cycles': 10,
     },
+    'Flickers-v0': {
+        'n_cycles': 10,
+        'continuous': True,
+    },
+    'FetchReach100-v1': {
+        'n_cycles': 10,
+    },
 }
 
 
@@ -33,7 +40,7 @@ DEFAULT_PARAMS = {
     'n_cycles': 50,  # per epoch
     'rollout_batch_size': 2,  # per mpi thread
     'n_batches': 40,  # training batches per cycle
-    'batch_size': 256,  # per mpi thread, measured in transitions and reduced to even multiple of chunk_length.
+    'batch_size': 6096,  # per mpi thread, measured in transitions and reduced to even multiple of chunk_length.
     'n_test_rollouts': 10,  # number of test rollouts per epoch, each consists of rollout_batch_size rollouts
     'test_with_polyak': False,  # run test episodes with the target network
     # exploration
@@ -64,11 +71,11 @@ def cached_make_env(make_env):
     created. This is useful here because we need to infer certain properties of the env, e.g.
     its observation and action spaces, without any intend of actually using it.
     """
-    if make_env not in CACHED_ENVS:
-        env = make_env()
-        CACHED_ENVS[make_env] = env
-    return CACHED_ENVS[make_env]
-
+    # if make_env not in CACHED_ENVS:
+    #     env = make_env()
+    #     CACHED_ENVS[make_env] = env
+    # return CACHED_ENVS[make_env]
+    return make_env()
 
 def prepare_params(kwargs):
     # DDPG params
@@ -76,7 +83,7 @@ def prepare_params(kwargs):
     env_name = kwargs['env_name']
 
     def make_env(subrank=None):
-        env = gym.make(env_name)
+        env = gym.make(env_name, **kwargs)
         if subrank is not None and logger.get_dir() is not None:
             try:
                 from mpi4py import MPI
@@ -95,7 +102,8 @@ def prepare_params(kwargs):
         return env
 
     kwargs['make_env'] = make_env
-    tmp_env = cached_make_env(kwargs['make_env'])
+    # tmp_env = cached_make_env(kwargs['make_env'])
+    tmp_env = make_env()
     assert hasattr(tmp_env, '_max_episode_steps')
     kwargs['T'] = tmp_env._max_episode_steps
 
@@ -141,7 +149,7 @@ def configure_her(params):
         del params[name]
     sample_her_transitions = make_sample_her_transitions(**her_params)
 
-    return sample_her_transitions
+    return sample_her_transitions, reward_fun
 
 
 def simple_goal_subtract(a, b):
@@ -149,8 +157,8 @@ def simple_goal_subtract(a, b):
     return a - b
 
 
-def configure_ddpg(dims, params, reuse=False, use_mpi=True, clip_return=True):
-    sample_her_transitions = configure_her(params)
+def configure_ddpg(dims, params, active, reuse=False, use_mpi=True, clip_return=True):
+    sample_her_transitions, reward_fun = configure_her(params)
     # Extract relevant parameters.
     gamma = params['gamma']
     rollout_batch_size = params['rollout_batch_size']
@@ -179,8 +187,8 @@ def configure_ddpg(dims, params, reuse=False, use_mpi=True, clip_return=True):
     ddpg_params['info'] = {
         'env_name': params['env_name'],
     }
-    policy = DDPG(reuse=reuse, **ddpg_params, use_mpi=use_mpi)
-    return policy
+    policy = DDPG(reuse=reuse, **ddpg_params, use_mpi=use_mpi, active=active)
+    return policy, reward_fun
 
 
 def configure_dims(params):
@@ -198,4 +206,4 @@ def configure_dims(params):
         if value.ndim == 0:
             value = value.reshape(1)
         dims['info_{}'.format(key)] = value.shape[0]
-    return dims
+    return dims, env.coord_dict

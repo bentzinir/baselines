@@ -19,7 +19,7 @@ def worker(remote, parent_remote, env_fn_wrappers):
             if cmd == 'step':
                 remote.send([step_env(env, action) for env, action in zip(envs, data)])
             elif cmd == 'reset':
-                remote.send([env.reset() for env in envs])
+                remote.send([env.reset(ex_init=data) for env in envs])
             elif cmd == 'render':
                 remote.send([env.render(mode='rgb_array') for env in envs])
             elif cmd == 'close':
@@ -87,10 +87,15 @@ class SubprocVecEnv(VecEnv):
         obs, rews, dones, infos = zip(*results)
         return _flatten_obs(obs), np.stack(rews), np.stack(dones), infos
 
-    def reset(self):
+    def reset(self, ex_inits=None, record=False):
         self._assert_not_closed()
-        for remote in self.remotes:
-            remote.send(('reset', None))
+        if ex_inits is not None:
+            assert len(ex_inits) >= self.num_envs
+            for remote, ex_init in zip(self.remotes, ex_inits):
+                remote.send(('reset', ex_init))
+        else:
+            for remote in self.remotes:
+                remote.send(('reset', None))
         obs = [remote.recv() for remote in self.remotes]
         obs = _flatten_list(obs)
         return _flatten_obs(obs)
@@ -107,9 +112,14 @@ class SubprocVecEnv(VecEnv):
 
     def get_images(self):
         self._assert_not_closed()
-        for pipe in self.remotes:
+        # nirbz: restricting the number of images because of memory issues
+        if len(self.remotes) > 16:
+            remotes = self.remotes[:16]
+        else:
+            remotes = self.remotes
+        for pipe in remotes:
             pipe.send(('render', None))
-        imgs = [pipe.recv() for pipe in self.remotes]
+        imgs = [pipe.recv() for pipe in remotes]
         imgs = _flatten_list(imgs)
         return imgs
 
@@ -126,7 +136,10 @@ def _flatten_obs(obs):
 
     if isinstance(obs[0], dict):
         keys = obs[0].keys()
-        return {k: np.stack([o[k] for o in obs]) for k in keys}
+        flattened_obs = {k: np.stack([o[k] for o in obs]) for k in keys}
+        if 'state_info' in keys:
+            flattened_obs['state_info'] = [ob['state_info'] for ob in obs]
+        return flattened_obs
     else:
         return np.stack(obs)
 

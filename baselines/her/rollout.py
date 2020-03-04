@@ -9,9 +9,10 @@ from baselines.her.util import convert_episode_to_batch_major, store_args
 class RolloutWorker:
 
     @store_args
-    def __init__(self, venv, policy, dims, logger, T, rollout_batch_size=1,
+    def __init__(self, venv, policy, dims, logger, active, T, rollout_batch_size=1,
                  exploit=False, use_target_net=False, compute_Q=False, noise_eps=0,
-                 random_eps=0, history_len=100, render=False, monitor=False, **kwargs):
+                 random_eps=0, history_len=100, render=False, monitor=False,
+                 exploration='eps_greedy', compute_root_Q=False, **kwargs):
         """Rollout worker generates experience by interacting with one or many environments.
 
         Args:
@@ -41,17 +42,25 @@ class RolloutWorker:
         self.reset_all_rollouts()
         self.clear_history()
 
-    def reset_all_rollouts(self):
-        self.obs_dict = self.venv.reset()
+    def reset_all_rollouts(self, ex_init=None, record=False):
+        if not self.active:
+            return
+
+        if ex_init is None:
+            ex_init = [{'x': None, 'info': None, 'g': None} for _ in range(self.venv.num_envs)]
+
+        self.obs_dict = self.venv.reset(ex_init, record)
         self.initial_o = self.obs_dict['observation']
         self.initial_ag = self.obs_dict['achieved_goal']
         self.g = self.obs_dict['desired_goal']
 
-    def generate_rollouts(self):
+    def generate_rollouts(self, ex_init=None, record=False, random=False):
         """Performs `rollout_batch_size` rollouts in parallel for time horizon `T` with the current
         policy acting on it accordingly.
         """
-        self.reset_all_rollouts()
+        if not self.active:
+            return
+        self.reset_all_rollouts(ex_init, record=record)
 
         # compute observations
         o = np.empty((self.rollout_batch_size, self.dims['o']), np.float32)  # observations
@@ -59,18 +68,53 @@ class RolloutWorker:
         o[:] = self.initial_o
         ag[:] = self.initial_ag
 
+        num_envs = self.venv.num_envs
+
+        # reached_goal = [False] * num_envs
+        # if self.exploration == 'go_explore_random':
+        #     random_action = [self.policy._random_action(num_envs)] * self.T
+        # elif self.exploration == 'go_explore_brownian':
+        #     from baselines.her.brownian import create_random_processes
+        #     maxu = self.policy.max_u
+        #     random_action = create_random_processes(self.T, dim=self.dims['u'], n_processes=num_envs, process_range=(-maxu, maxu))
+        # else:
+        #     random_action = [None] * self.T
+
+        reached_goal = [True] * num_envs
+        # random_action = self.policy._random_action(num_envs)
+
+        if random:
+            self.exploration = 'go_explore_random'
+        else:
+            self.exploration = 'eps_greedy'
+
+        hit_time = [None] * num_envs
+
         # generate episodes
         obs, achieved_goals, acts, goals, successes = [], [], [], [], []
         dones = []
         info_values = [np.empty((self.T - 1, self.rollout_batch_size, self.dims['info_' + key]), np.float32) for key in self.info_keys]
-        Qs = []
+        Qs, s_infos = [], []
+
         for t in range(self.T):
             policy_output = self.policy.get_actions(
                 o, ag, self.g,
                 compute_Q=self.compute_Q,
                 noise_eps=self.noise_eps if not self.exploit else 0.,
                 random_eps=self.random_eps if not self.exploit else 0.,
-                use_target_net=self.use_target_net)
+                use_target_net=self.use_target_net,
+                exploration=self.exploration,
+                go=np.logical_not(reached_goal),
+                # random_action=random_action[t],
+                # random_action=random_action,
+                random_action=self.policy._random_action(num_envs),
+                # inputs for go_explore_Q
+                # root_Qs=root_Qs,
+                acts=acts,
+                t=t,
+                T=self.T,
+                hit_time=hit_time
+            )
 
             if self.compute_Q:
                 u, Q = policy_output
@@ -89,7 +133,17 @@ class RolloutWorker:
             obs_dict_new, _, done, info = self.venv.step(u)
             o_new = obs_dict_new['observation']
             ag_new = obs_dict_new['achieved_goal']
+            if 'state_info' in obs_dict_new:
+                s_info = obs_dict_new['state_info']
+            # else:
+            #     s_info = [[None] for _ in range(num_envs)]
             success = np.array([i.get('is_success', 0.0) for i in info])
+
+            reached_goal = np.logical_or(reached_goal, success)
+
+            for e_idx, (rg, ht) in enumerate(zip(reached_goal, hit_time)):
+                if rg and ht is None:
+                    hit_time[e_idx] = t
 
             if any(done):
                 # here we assume all environments are done is ~same number of steps, so we terminate rollouts whenever any of the envs returns done
@@ -106,12 +160,15 @@ class RolloutWorker:
                 self.reset_all_rollouts()
                 return self.generate_rollouts()
 
+            # Ts.append([t] * num_envs)
             dones.append(done)
             obs.append(o.copy())
             achieved_goals.append(ag.copy())
             successes.append(success.copy())
             acts.append(u.copy())
             goals.append(self.g.copy())
+            if 'state_info' in obs_dict_new:
+                s_infos.append(s_info)
             o[...] = o_new
             ag[...] = ag_new
         obs.append(o.copy())
@@ -120,7 +177,19 @@ class RolloutWorker:
         episode = dict(o=obs,
                        u=acts,
                        g=goals,
-                       ag=achieved_goals)
+                       ag=achieved_goals,
+                       # s_info=s_infos,
+                       # t=Ts
+                       )
+        if 'state_info' in obs_dict_new:
+            episode['s_info'] = s_infos
+
+        # if self.compute_root_Q:
+        #     episode["root_Qs"] = root_Qs
+
+        if self.compute_Q:
+            episode["Qs"] = Qs
+
         for key, value in zip(self.info_keys, info_values):
             episode['info_{}'.format(key)] = value
 
@@ -136,24 +205,34 @@ class RolloutWorker:
         return convert_episode_to_batch_major(episode)
 
     def clear_history(self):
+        if not self.active:
+            return
         """Clears all histories that are used for statistics
         """
         self.success_history.clear()
         self.Q_history.clear()
 
     def current_success_rate(self):
+        if not self.active:
+            return
         return np.mean(self.success_history)
 
     def current_mean_Q(self):
+        if not self.active:
+            return
         return np.mean(self.Q_history)
 
     def save_policy(self, path):
+        if not self.active:
+            return
         """Pickles the current policy for later inspection.
         """
         with open(path, 'wb') as f:
             pickle.dump(self.policy, f)
 
     def logs(self, prefix='worker'):
+        if not self.active:
+            return
         """Generates a dictionary that contains all collected statistics.
         """
         logs = []

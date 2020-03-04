@@ -2,10 +2,11 @@ import sys
 import re
 import multiprocessing
 import os.path as osp
-import gym
+import gym, gym_maze
 from collections import defaultdict
 import tensorflow as tf
 import numpy as np
+import copy
 
 from baselines.common.vec_env import VecFrameStack, VecNormalize, VecEnv
 from baselines.common.vec_env.vec_video_recorder import VecVideoRecorder
@@ -13,6 +14,9 @@ from baselines.common.cmd_util import common_arg_parser, parse_unknown_args, mak
 from baselines.common.tf_util import get_session
 from baselines import logger
 from importlib import import_module
+
+from mujoco_py import GlfwContext
+GlfwContext(offscreen=True)
 
 try:
     from mpi4py import MPI
@@ -32,7 +36,8 @@ except ImportError:
 _game_envs = defaultdict(set)
 for env in gym.envs.registry.all():
     # TODO: solve this with regexes
-    env_type = env.entry_point.split(':')[0].split('.')[-1]
+    # env_type = env.entry_point.split(':')[0].split('.')[-1]
+    env_type = env._entry_point.split(':')[0].split('.')[-1]
     _game_envs[env_type].add(env.id)
 
 # reading benchmark names directly from retro requires
@@ -60,10 +65,36 @@ def train(args, extra_args):
     learn = get_learn_function(args.alg)
     alg_kwargs = get_learn_function_defaults(args.alg, env_type)
     alg_kwargs.update(extra_args)
+    alg_kwargs['log_path'] = args.log_path
 
-    env = build_env(args)
+    override_params = extra_args
+
+    if extra_args['mode'] == 'maximum_span':
+        _args = copy.deepcopy(args)
+        _args.num_env = 1
+        env = build_env(_args, extra_args=extra_args)
+    else:
+        env = build_env(args, extra_args=extra_args)
+
+    if 'load_mca_path' not in alg_kwargs:
+        alg_kwargs['load_mca_path'] = None
+
+    # build overloaded env for the mca explorer
+
+    mca_extra_args = copy.deepcopy(extra_args)
+    mca_extra_args["ss"] = extra_args['ss']  # True
+    mca_env = build_env(args, extra_args=mca_extra_args)
+
+    # os.path.join(save_path, time.strftime("%Y-%m-%d-%H-%M-%S"))
+
     if args.save_video_interval != 0:
-        env = VecVideoRecorder(env, osp.join(logger.get_dir(), "videos"), record_video_trigger=lambda x: x % args.save_video_interval == 0, video_length=args.save_video_length)
+        env = VecVideoRecorder(env, osp.join(logger.get_dir(), "videos"),
+                               record_video_trigger=lambda x: x % args.save_video_interval == 0,
+                               video_length=args.save_video_length)
+
+        mca_env = VecVideoRecorder(mca_env, osp.join(logger.get_dir(), "mca_videos"),
+                               record_video_trigger=lambda x: x % args.save_video_interval == 0,
+                               video_length=args.save_video_length)
 
     if args.network:
         alg_kwargs['network'] = args.network
@@ -75,15 +106,17 @@ def train(args, extra_args):
 
     model = learn(
         env=env,
+        mca_env=mca_env,
         seed=seed,
         total_timesteps=total_timesteps,
+        override_params=override_params,
         **alg_kwargs
     )
 
     return model, env
 
 
-def build_env(args):
+def build_env(args, extra_args=None):
     ncpu = multiprocessing.cpu_count()
     if sys.platform == 'darwin': ncpu //= 2
     nenv = args.num_env or ncpu
@@ -110,7 +143,10 @@ def build_env(args):
         get_session(config=config)
 
         flatten_dict_observations = alg not in {'her'}
-        env = make_vec_env(env_id, env_type, args.num_env or 1, seed, reward_scale=args.reward_scale, flatten_dict_observations=flatten_dict_observations)
+        env = make_vec_env(env_id, env_type, args.num_env or 1, seed, reward_scale=args.reward_scale,
+                           flatten_dict_observations=flatten_dict_observations,
+                           env_kwargs=extra_args
+                           )
 
         if env_type == 'mujoco':
             env = VecNormalize(env, use_tf=True)
@@ -126,7 +162,8 @@ def get_env_type(args):
 
     # Re-parse the gym registry, since we could have new envs since last time.
     for env in gym.envs.registry.all():
-        env_type = env.entry_point.split(':')[0].split('.')[-1]
+        # env_type = env.entry_point.split(':')[0].split('.')[-1]
+        env_type = env._entry_point.split(':')[0].split('.')[-1]
         _game_envs[env_type].add(env.id)  # This is a set so add is idempotent
 
     if env_id in _game_envs.keys():
@@ -207,11 +244,18 @@ def main(args):
     extra_args = parse_cmdline_kwargs(unknown_args)
 
     if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
+        import time
         rank = 0
+        if args.log_path:
+            args.log_path = osp.join(args.log_path, time.strftime("%Y-%m-%d-%H-%M-%S"))
         configure_logger(args.log_path)
     else:
         rank = MPI.COMM_WORLD.Get_rank()
         configure_logger(args.log_path, format_strs=[])
+
+    if args.play:
+        args.num_timesteps = 0
+        args.num_env = 1
 
     model, env = train(args, extra_args)
 
@@ -232,15 +276,20 @@ def main(args):
                 actions, _, state, _ = model.step(obs,S=state, M=dones)
             else:
                 actions, _, _, _ = model.step(obs)
-
+            if isinstance(actions, list):
+                actions = actions[0]
             obs, rew, done, _ = env.step(actions)
-            episode_rew += rew
+            episode_rew += rew[0] if isinstance(env, VecEnv) else rew
             env.render()
-            done_any = done.any() if isinstance(done, np.ndarray) else done
-            if done_any:
-                for i in np.nonzero(done)[0]:
-                    print('episode_rew={}'.format(episode_rew[i]))
-                    episode_rew[i] = 0
+            if args.vis_sleep > 0:
+                import time
+                time.sleep(args.vis_sleep)
+            # print(f"gc:{obs['observation'][...,3:]}")
+            done = done.any() if isinstance(done, np.ndarray) else done
+            if done:
+                print('episode_rew={}'.format(episode_rew))
+                episode_rew = 0
+                t = 0
 
     env.close()
 

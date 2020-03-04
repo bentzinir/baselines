@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def make_sample_her_transitions(replay_strategy, replay_k, reward_fun):
+def make_sample_her_transitions(replay_strategy, replay_k, reward_fun, **kwargs):
     """Creates a sample function that can be used for HER experience replay.
 
     Args:
@@ -19,6 +19,8 @@ def make_sample_her_transitions(replay_strategy, replay_k, reward_fun):
     def _sample_her_transitions(episode_batch, batch_size_in_transitions):
         """episode_batch is {key: array(buffer_size x T x dim_key)}
         """
+        if 's_info' in episode_batch.keys():
+            del episode_batch['s_info']
         T = episode_batch['u'].shape[1]
         rollout_batch_size = episode_batch['u'].shape[0]
         batch_size = batch_size_in_transitions
@@ -53,6 +55,8 @@ def make_sample_her_transitions(replay_strategy, replay_k, reward_fun):
         reward_params['info'] = info
         transitions['r'] = reward_fun(**reward_params)
 
+        # we need to following asset because we calculate the minimal distance between points according to the 0-1 reward
+        assert np.all(np.logical_or(transitions['r'] == 0, transitions['r'] == 1))
         transitions = {k: transitions[k].reshape(batch_size, *transitions[k].shape[1:])
                        for k in transitions.keys()}
 

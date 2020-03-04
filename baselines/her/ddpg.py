@@ -62,6 +62,13 @@ class DDPG(object):
             prm_loss_weight: Weight corresponding to the primary loss
             aux_loss_weight: Weight corresponding to the auxilliary loss also called the cloning loss
         """
+        if not self.active:
+            return
+
+        print("\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\")
+        print(f"Batch size: {self.batch_size}, action l2: {action_l2}")
+        print("\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\")
+
         if self.clip_return is None:
             self.clip_return = np.inf
 
@@ -125,8 +132,9 @@ class DDPG(object):
         return actions, None, None, None
 
 
-    def get_actions(self, o, ag, g, noise_eps=0., random_eps=0., use_target_net=False,
-                    compute_Q=False):
+
+    def get_actions(self, o, ag, g, noise_eps=0., random_eps=0., use_target_net=False, compute_Q=False,
+                    exploration='eps_greedy', **kwargs):
         o, g = self._preprocess_og(o, ag, g)
         policy = self.target if use_target_net else self.main
         # values to compute
@@ -143,14 +151,55 @@ class DDPG(object):
         ret = self.sess.run(vals, feed_dict=feed)
         # action postprocessing
         u = ret[0]
-        noise = noise_eps * self.max_u * np.random.randn(*u.shape)  # gaussian noise
-        u += noise
-        u = np.clip(u, -self.max_u, self.max_u)
-        u += np.random.binomial(1, random_eps, u.shape[0]).reshape(-1, 1) * (self._random_action(u.shape[0]) - u)  # eps-greedy
-        if u.shape[0] == 1:
-            u = u[0]
-        u = u.copy()
-        ret[0] = u
+        if exploration == 'eps_greedy':
+            noise = noise_eps * self.max_u * np.random.randn(*u.shape)  # gaussian noise
+            u += noise
+            u = np.clip(u, -self.max_u, self.max_u)
+            u += np.random.binomial(1, random_eps, u.shape[0]).reshape(-1, 1) * (self._random_action(u.shape[0]) - u)  # eps-greedy
+            if u.shape[0] == 1:
+                u = u[0]
+            u = u.copy()
+            ret[0] = u
+        elif exploration == "go_explore":
+            for idx, go in enumerate(kwargs["go"]):
+                if go:
+                    ...
+                else:  # explore
+                    # TODO: remove action scaling after debug
+                    w = 1
+                    ret[0][idx] = w * self._random_action(1)[0]
+        elif exploration in ["go_explore_random", "go_explore_brownian"]:
+            for idx, go in enumerate(kwargs["go"]):
+                if go:
+                    ...
+                else:  # explore
+                    ret[0][idx] = kwargs['random_action'][idx]
+        elif exploration == 'go_explore_Q':
+            for idx, go in enumerate(kwargs["go"]):
+                if go:
+                    ...
+                else:  # downhill Q exploration
+                    hit_time = kwargs["hit_time"][idx]
+                    t = kwargs["t"]
+                    T = kwargs["T"]
+                    if hit_time is not None:
+                        if t > hit_time + 2:
+                            acts = np.asarray(kwargs["acts"])[hit_time:, idx]
+                            root_Qs = np.asarray(kwargs["root_Qs"])[hit_time:, idx]
+                            weights = root_Qs[:-1] - root_Qs[1:]
+                            scaled_weights = 1/(weights.max() - weights.min())*(weights-weights.min())
+                            scaled_weights = np.concatenate(([[0]], scaled_weights), axis=0)
+                            greedy_action = np.sum(acts * scaled_weights, axis=0)
+                            # choose greedy action with higher probability at the end of the episode
+                            if np.random.binomial(n=1, p=t/T):
+                                ret[0][idx] = greedy_action
+                            else:
+                                ret[0][idx] = self._random_action(1)[0]
+                    else:
+                        ret[0][idx] = self._random_action(1)[0]
+
+        else:
+            raise ValueError
 
         if len(ret) == 1:
             return ret[0]
@@ -219,6 +268,8 @@ class DDPG(object):
         episode_batch: array of batch_size x (T or T+1) x dim_key
                        'o' is of size T+1, others are of size T
         """
+        if episode_batch is None:
+            return
 
         self.buffer.store_episode(episode_batch)
 
@@ -288,6 +339,8 @@ class DDPG(object):
         self.sess.run(self.stage_op, feed_dict=dict(zip(self.buffer_ph_tf, batch)))
 
     def train(self, stage=True):
+        if not self.active:
+            return
         if stage:
             self.stage_batch()
         critic_loss, actor_loss, Q_grad, pi_grad = self._grads()
@@ -298,6 +351,8 @@ class DDPG(object):
         self.sess.run(self.init_target_net_op)
 
     def update_target_net(self):
+        if not self.active:
+            return
         self.sess.run(self.update_target_net_op)
 
     def clear_buffer(self):
@@ -354,7 +409,7 @@ class DDPG(object):
 
         # loss functions
         target_Q_pi_tf = self.target.Q_pi_tf
-        clip_range = (-self.clip_return, 0. if self.clip_pos_returns else np.inf)
+        clip_range = (-self.clip_return, self.clip_return if self.clip_pos_returns else np.inf)
         target_tf = tf.clip_by_value(batch_tf['r'] + self.gamma * target_Q_pi_tf, *clip_range)
         self.Q_loss_tf = tf.reduce_mean(tf.square(tf.stop_gradient(target_tf) - self.main.Q_tf))
 
@@ -443,6 +498,6 @@ class DDPG(object):
         node = [tf.assign(var, val) for var, val in zip(vars, state["tf"])]
         self.sess.run(node)
 
-    def save(self, save_path):
+    def save(self, save_path, message=None):
         tf_util.save_variables(save_path)
-
+        print(f"{message} - Saved model to: {save_path}")

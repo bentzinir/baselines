@@ -36,10 +36,11 @@ class VecVideoRecorder(VecEnvWrapper):
         self.recording = False
         self.recorded_frames = 0
 
-    def reset(self):
-        obs = self.venv.reset()
+    def reset(self, ex_inits=None, record=False):
+        obs = self.venv.reset(ex_inits)
 
-        self.start_video_recorder()
+        if record:
+            self.start_video_recorder()
 
         return obs
 

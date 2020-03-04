@@ -9,7 +9,7 @@ except ImportError:
     MPI = None
 
 import gym
-from gym.wrappers import FlattenObservation, FilterObservation
+from gym.wrappers import FlattenDictWrapper
 from baselines import logger
 from baselines.bench import Monitor
 from baselines.common import set_global_seeds
@@ -81,7 +81,8 @@ def make_env(env_id, env_type, mpi_rank=0, subrank=0, seed=None, reward_scale=1.
         env = gym.make(env_id, **env_kwargs)
 
     if flatten_dict_observations and isinstance(env.observation_space, gym.spaces.Dict):
-        env = FlattenObservation(env)
+        keys = env.observation_space.spaces.keys()
+        env = gym.wrappers.FlattenDictWrapper(env, dict_keys=list(keys))
 
     env.seed(seed + subrank if seed is not None else None)
     env = Monitor(env,
@@ -127,7 +128,7 @@ def make_robotics_env(env_id, seed, rank=0):
     """
     set_global_seeds(seed)
     env = gym.make(env_id)
-    env = FlattenObservation(FilterObservation(env, ['observation', 'desired_goal']))
+    env = FlattenDictWrapper(env, ['observation', 'desired_goal'])
     env = Monitor(
         env, logger.get_dir() and os.path.join(logger.get_dir(), str(rank)),
         info_keywords=('is_success',))
@@ -171,6 +172,7 @@ def common_arg_parser():
     parser.add_argument('--save_video_length', help='Length of recorded video. Default: 200', default=200, type=int)
     parser.add_argument('--log_path', help='Directory to save learning curve data.', default=None, type=str)
     parser.add_argument('--play', default=False, action='store_true')
+    parser.add_argument('--vis_sleep', help='vis sleep', default=0, type=float)
     return parser
 
 def robotics_arg_parser():
