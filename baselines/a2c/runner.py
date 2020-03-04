@@ -38,13 +38,9 @@ class Runner(AbstractEnvRunner):
             obs, rewards, dones, infos = self.env.step(actions)
             for info in infos:
                 maybeepinfo = info.get('episode')
-                if maybeepinfo:
-                    epinfos.append(maybeepinfo)
+                if maybeepinfo: epinfos.append(maybeepinfo)
             self.states = states
             self.dones = dones
-            for n, done in enumerate(dones):
-                if done:
-                    self.obs[n] = self.obs[n]*0
             self.obs = obs
             mb_rewards.append(rewards)
         mb_dones.append(self.dones)

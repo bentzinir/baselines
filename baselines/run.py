@@ -1,4 +1,5 @@
 import sys
+import re
 import multiprocessing
 import os.path as osp
 import gym
@@ -6,14 +7,12 @@ from collections import defaultdict
 import tensorflow as tf
 import numpy as np
 
+from baselines.common.vec_env import VecFrameStack, VecNormalize, VecEnv
 from baselines.common.vec_env.vec_video_recorder import VecVideoRecorder
-from baselines.common.vec_env.vec_frame_stack import VecFrameStack
 from baselines.common.cmd_util import common_arg_parser, parse_unknown_args, make_vec_env, make_env
 from baselines.common.tf_util import get_session
 from baselines import logger
 from importlib import import_module
-
-from baselines.common.vec_env.vec_normalize import VecNormalize
 
 try:
     from mpi4py import MPI
@@ -33,7 +32,7 @@ except ImportError:
 _game_envs = defaultdict(set)
 for env in gym.envs.registry.all():
     # TODO: solve this with regexes
-    env_type = env._entry_point.split(':')[0].split('.')[-1]
+    env_type = env.entry_point.split(':')[0].split('.')[-1]
     _game_envs[env_type].add(env.id)
 
 # reading benchmark names directly from retro requires
@@ -51,8 +50,8 @@ _game_envs['retro'] = {
 }
 
 
-def train(args, extra_args, logger):
-    env_type, env_id = get_env_type(args.env)
+def train(args, extra_args):
+    env_type, env_id = get_env_type(args)
     print('env_type: {}'.format(env_type))
 
     total_timesteps = int(args.num_timesteps)
@@ -64,7 +63,7 @@ def train(args, extra_args, logger):
 
     env = build_env(args)
     if args.save_video_interval != 0:
-        env = VecVideoRecorder(env, osp.join(logger.Logger.CURRENT.dir, "videos"), record_video_trigger=lambda x: x % args.save_video_interval == 0, video_length=args.save_video_length)
+        env = VecVideoRecorder(env, osp.join(logger.get_dir(), "videos"), record_video_trigger=lambda x: x % args.save_video_interval == 0, video_length=args.save_video_length)
 
     if args.network:
         alg_kwargs['network'] = args.network
@@ -72,15 +71,12 @@ def train(args, extra_args, logger):
         if alg_kwargs.get('network') is None:
             alg_kwargs['network'] = get_default_network(env_type)
 
-    buff_line = 'Training {} on {}:{} with arguments \n{}'.format(args.alg, env_type, env_id, alg_kwargs)
-    # print(buff_line)
-    logger.log(buff_line)
+    print('Training {} on {}:{} with arguments \n{}'.format(args.alg, env_type, env_id, alg_kwargs))
+
     model = learn(
         env=env,
         seed=seed,
         total_timesteps=total_timesteps,
-        save_interval=args.save_interval,
-        load_path=args.load,
         **alg_kwargs
     )
 
@@ -94,9 +90,9 @@ def build_env(args):
     alg = args.alg
     seed = args.seed
 
-    env_type, env_id = get_env_type(args.env)
+    env_type, env_id = get_env_type(args)
 
-    if env_type in {'atari', 'retro', 'ghost'}:
+    if env_type in {'atari', 'retro'}:
         if alg == 'deepq':
             env = make_env(env_id, env_type, seed=seed, wrapper_kwargs={'frame_stack': True})
         elif alg == 'trpo_mpi':
@@ -107,23 +103,32 @@ def build_env(args):
             env = VecFrameStack(env, frame_stack_size)
 
     else:
-       config = tf.ConfigProto(allow_soft_placement=True,
+        config = tf.ConfigProto(allow_soft_placement=True,
                                intra_op_parallelism_threads=1,
                                inter_op_parallelism_threads=1)
-       config.gpu_options.allow_growth = True
-       get_session(config=config)
+        config.gpu_options.allow_growth = True
+        get_session(config=config)
 
-       env = make_vec_env(env_id, env_type, args.num_env or 1, seed, reward_scale=args.reward_scale)
+        flatten_dict_observations = alg not in {'her'}
+        env = make_vec_env(env_id, env_type, args.num_env or 1, seed, reward_scale=args.reward_scale, flatten_dict_observations=flatten_dict_observations)
 
-       if env_type == 'mujoco':
-           env = VecNormalize(env)
+        if env_type == 'mujoco':
+            env = VecNormalize(env, use_tf=True)
 
     return env
 
 
-def get_env_type(env_id):
-    if env_id == 'BreakoutGhost':
-        return 'ghost', 'BreakoutGhost'
+def get_env_type(args):
+    env_id = args.env
+
+    if args.env_type is not None:
+        return args.env_type, env_id
+
+    # Re-parse the gym registry, since we could have new envs since last time.
+    for env in gym.envs.registry.all():
+        env_type = env.entry_point.split(':')[0].split('.')[-1]
+        _game_envs[env_type].add(env.id)  # This is a set so add is idempotent
+
     if env_id in _game_envs.keys():
         env_type = env_id
         env_id = [g for g in _game_envs[env_type]][0]
@@ -133,13 +138,15 @@ def get_env_type(env_id):
             if env_id in e:
                 env_type = g
                 break
+        if ':' in env_id:
+            env_type = re.sub(r':.*', '', env_id)
         assert env_type is not None, 'env_id {} is not recognized in env types'.format(env_id, _game_envs.keys())
 
     return env_type, env_id
 
 
 def get_default_network(env_type):
-    if env_type in {'atari', 'retro', 'ghost'}:
+    if env_type in {'atari', 'retro'}:
         return 'cnn'
     else:
         return 'mlp'
@@ -185,6 +192,12 @@ def parse_cmdline_kwargs(args):
     return {k: parse(v) for k,v in parse_unknown_args(args).items()}
 
 
+def configure_logger(log_path, **kwargs):
+    if log_path is not None:
+        logger.configure(log_path)
+    else:
+        logger.configure(**kwargs)
+
 
 def main(args):
     # configure logger, disable logging in child MPI processes (with rank > 0)
@@ -193,22 +206,14 @@ def main(args):
     args, unknown_args = arg_parser.parse_known_args(args)
     extra_args = parse_cmdline_kwargs(unknown_args)
 
-    import os, time
-    run_time = time.strftime("%Y-%m-%d-%H-%M-%S")
-    log_dir = os.path.join(os.getcwd(), "logs", run_time)
-
-    if args.play:
-        args.num_timesteps = 0
-        args.num_env = 1
     if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
         rank = 0
-        logger.configure(log_dir)
+        configure_logger(args.log_path)
     else:
-        logger.configure(format_strs=[])
         rank = MPI.COMM_WORLD.Get_rank()
+        configure_logger(args.log_path, format_strs=[])
 
-    model, env = train(args, extra_args, logger)
-    env.close()
+    model, env = train(args, extra_args)
 
     if args.save_path is not None and rank == 0:
         save_path = osp.expanduser(args.save_path)
@@ -216,24 +221,30 @@ def main(args):
 
     if args.play:
         logger.log("Running trained model")
-        env = build_env(args)
         obs = env.reset()
-        def initialize_placeholders(nlstm=128,**kwargs):
-            return np.zeros((args.num_env or 1, 2*nlstm)), np.zeros((1))
-        state, dones = initialize_placeholders(**extra_args)
+
+        state = model.initial_state if hasattr(model, 'initial_state') else None
+        dones = np.zeros((1,))
+
+        episode_rew = np.zeros(env.num_envs) if isinstance(env, VecEnv) else np.zeros(1)
         while True:
-            actions, _, state, _ = model.step(obs,S=state, M=dones)
-            obs, _, done, _ = env.step(actions)
+            if state is not None:
+                actions, _, state, _ = model.step(obs,S=state, M=dones)
+            else:
+                actions, _, _, _ = model.step(obs)
+
+            obs, rew, done, _ = env.step(actions)
+            episode_rew += rew
             env.render()
-            done = done.any() if isinstance(done, np.ndarray) else done
+            done_any = done.any() if isinstance(done, np.ndarray) else done
+            if done_any:
+                for i in np.nonzero(done)[0]:
+                    print('episode_rew={}'.format(episode_rew[i]))
+                    episode_rew[i] = 0
 
-            if done:
-                obs = env.reset()
-
-        env.close()
+    env.close()
 
     return model
-
 
 if __name__ == '__main__':
     main(sys.argv)

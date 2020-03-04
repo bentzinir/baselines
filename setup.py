@@ -12,10 +12,9 @@ extras = {
         'filelock',
         'pytest',
         'pytest-forked',
-        'atari-py'
-    ],
-    'bullet': [
-        'pybullet',
+        'atari-py',
+        'matplotlib',
+        'pandas'
     ],
     'mpi': [
         'mpi4py'
@@ -32,12 +31,10 @@ setup(name='baselines',
       packages=[package for package in find_packages()
                 if package.startswith('baselines')],
       install_requires=[
-          'gym',
+          'gym>=0.15.4, <0.16.0',
           'scipy',
           'tqdm',
           'joblib',
-          'dill',
-          'progressbar2',
           'cloudpickle',
           'click',
           'opencv-python'
@@ -47,17 +44,17 @@ setup(name='baselines',
       author='OpenAI',
       url='https://github.com/openai/baselines',
       author_email='gym@openai.com',
-      version='0.1.5')
+      version='0.1.6')
 
 
 # ensure there is some tensorflow build with version above 1.4
 import pkg_resources
 tf_pkg = None
-for tf_pkg_name in ['tensorflow', 'tensorflow-gpu']:
+for tf_pkg_name in ['tensorflow', 'tensorflow-gpu', 'tf-nightly', 'tf-nightly-gpu']:
     try:
         tf_pkg = pkg_resources.get_distribution(tf_pkg_name)
     except pkg_resources.DistributionNotFound:
         pass
 assert tf_pkg is not None, 'TensorFlow needed, of version above 1.4'
-from distutils.version import StrictVersion
-assert StrictVersion(re.sub(r'-?rc\d+$', '', tf_pkg.version)) >= StrictVersion('1.4.0')
+from distutils.version import LooseVersion
+assert LooseVersion(re.sub(r'-?rc\d+$', '', tf_pkg.version)) >= LooseVersion('1.4.0')
