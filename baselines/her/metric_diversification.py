@@ -56,8 +56,7 @@ class VisObserver:
 
 
 class MetricDiversifier:
-    def __init__(self, kmax, reward_fun, active=True, load_p=1, vis=False, vis_coords=None, load_model=None,
-                 trainable=True, **kwargs):
+    def __init__(self, kmax, reward_fun, active=True, load_p=1, vis=False, vis_coords=None, load_model=None, **kwargs):
         self.kmin = 25
         self.k = 25
         self.kmax = kmax
@@ -70,12 +69,11 @@ class MetricDiversifier:
         self.proposal_counter = 400
         self.adjust_counter = 400
         self.x_proposal = self.init_record(x=None)
-        self.activate = active
+        self.active = active
         self.load_p = load_p
         self.vis = vis
         self.vis_coords = vis_coords
         self.counter = 0
-        self.trainable = trainable
         self.observer = None
         if load_model is not None:
             self.load_model(load_model)
@@ -210,14 +208,14 @@ class MetricDiversifier:
         :param d_func:
         :return:
         '''
-        if not self.trainable:
-            return
         if new_point is None:
             return
-        if self.activate:
+        if self.active:
             self._load_sample(new_point, d_func)
         else:
+            self.fit_buffer_size(1)
             self.buffer.append(new_point)
+            self.dilute(verbose=False)
 
     def _set_pnt_reward(self, pnt):
         for i in range(self.current_size):
@@ -225,7 +223,7 @@ class MetricDiversifier:
                 return True
         return False
 
-    def dilute(self):
+    def dilute(self, verbose=True):
         _size = self.current_size
 
         if self.current_size <= self.kmin:
@@ -249,7 +247,8 @@ class MetricDiversifier:
         for idx in dilutions:
             del self.buffer[idx]
         self.fit_buffer_size()
-        print(f"Diluting: {_size} -> {self.current_size}")
+        if verbose:
+            print(f"Diluting: {_size} -> {self.current_size}")
         return dilute
 
     def draw(self, n, farthest=False):
@@ -348,8 +347,10 @@ if __name__ == '__main__':
         else:
             return 0
 
-    uniformizer = MetricDiversifier(kmax=200, reward_fun=reward_fun, vis=True, active=True, load_p=1, vis_coords=[0, 1],
+    active = True
+    uniformizer = MetricDiversifier(kmax=200, reward_fun=reward_fun, vis=True, load_p=1, vis_coords=[0, 1],
                                     # load_model='/home/nir/work/git/baselines/logs/01-01-2020/mca_cover/0_model.json'
+                                    active=active
                                     )
 
     dists_prior = [0.5, 0.5]
@@ -364,5 +365,6 @@ if __name__ == '__main__':
         pnt = uniformizer.init_record(x=x)
         uniformizer.load_new_point(pnt)
         counter += 1
-        if counter % 10000 == 0:
+        if counter % 1000 == 0:
             uniformizer.save(save_path='logs/01-01-2020', epoch=counter)
+            print(f"active;{active}, epoch: {counter}, buffer size: {uniformizer.current_size}")
