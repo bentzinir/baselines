@@ -213,9 +213,14 @@ class MetricDiversifier:
         if self.active:
             self._load_sample(new_point, d_func)
         else:
+            if not np.random.binomial(n=1, p=0.1):
+                return
+            if self.k > self.kmax:
+                self.buffer.popleft()
             self.fit_buffer_size(1)
             self.buffer.append(new_point)
             self.dilute(verbose=False)
+            print(f"Buffer size: {self.current_size}")
 
     def _set_pnt_reward(self, pnt):
         for i in range(self.current_size):

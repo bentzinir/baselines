@@ -235,10 +235,9 @@ def learn(*, network, env, mca_env, total_timesteps,
                                                                                           ss=kwargs['ss']  # True
                                                                                           )
 
-    mca_state_model = MetricDiversifier(kmax=100, reward_fun=reward_fun, vis=True, vis_coords=coord_dict['vis'],
-                                        load_model=kwargs['load_mca_path'])
+    mca_state_model = MetricDiversifier(kmax=kwargs['k'], reward_fun=reward_fun, vis=True, vis_coords=coord_dict['vis'],
+                                        load_model=kwargs['load_mca_path'], active=True)
 
-    mca_active = kwargs["mode"] in ["maximum_span"]
     mca = MCA(policy=mca_policy, rollout_worker=mca_rw, evaluator=mca_evaluator, state_model=mca_state_model,
               sharing=kwargs["sharing"], coord_dict=coord_dict, active=mca_active, ss=kwargs['ss'])
     ##############################################################################
