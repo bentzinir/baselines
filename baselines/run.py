@@ -2,7 +2,7 @@ import sys
 import re
 import multiprocessing
 import os.path as osp
-import gym #, gym_maze
+import gym, gym_maze
 from collections import defaultdict
 import tensorflow as tf
 import numpy as np
@@ -231,9 +231,9 @@ def parse_cmdline_kwargs(args):
 
 def configure_logger(log_path, **kwargs):
     if log_path is not None:
-        logger.configure(log_path)
+        return logger.configure(log_path)
     else:
-        logger.configure(**kwargs)
+        return logger.configure(**kwargs)
 
 
 def main(args):
@@ -244,11 +244,11 @@ def main(args):
     extra_args = parse_cmdline_kwargs(unknown_args)
 
     if MPI is None or MPI.COMM_WORLD.Get_rank() == 0:
-        import time
+        # import time
         rank = 0
-        if args.log_path:
-            args.log_path = osp.join(args.log_path, time.strftime("%Y-%m-%d-%H-%M-%S"))
-        configure_logger(args.log_path)
+        # if args.log_path:
+        #     args.log_path = osp.join(args.log_path, time.strftime("%Y-%m-%d-%H-%M-%S"))
+        args.log_path = configure_logger(args.log_path)
     else:
         rank = MPI.COMM_WORLD.Get_rank()
         configure_logger(args.log_path, format_strs=[])
@@ -294,6 +294,7 @@ def main(args):
     env.close()
 
     return model
+
 
 if __name__ == '__main__':
     main(sys.argv)

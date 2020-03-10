@@ -4,7 +4,7 @@ from baselines.her.visualizer import VisObserver
 
 
 class MCA:
-    def __init__(self, policy, rollout_worker, evaluator, state_model, coord_dict, active=False, n_samples=30,
+    def __init__(self, policy, rollout_worker, evaluator, state_model, coord_dict, n_samples=30,
                  ss=False, sharing=False, vis_obs=False):
         self.policy = policy
         self.rollout_worker = rollout_worker
@@ -15,13 +15,12 @@ class MCA:
         self.sharing = sharing
         self.ex_experience = None
         self.coord_dict = coord_dict
-        self.active = active
         self.n_samples = n_samples
         if vis_obs:
             self.visualizer = VisObserver()
 
     def load_episode(self, episode):
-        if episode is None or not self.active:
+        if episode is None:
             return
         obs = episode['o']
         if self.ss:

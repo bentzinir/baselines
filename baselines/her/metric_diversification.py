@@ -28,7 +28,7 @@ class VisObserver:
         # plt.show(block=False)
         plt.tight_layout()
 
-    def update(self, points, proposal_points=None):
+    def update(self, points, proposal_points=None, draw=False):
         if self.ndim == 2:
             self.scat.set_offsets(points)
             if proposal_points:
@@ -46,37 +46,39 @@ class VisObserver:
             if proposal_points:
                 prop_pts = np.asarray(proposal_points)
                 self.proposal_scat._offsets3d = (prop_pts[:, 0], prop_pts[:, 1], prop_pts[:, 2])
-        # plt.pause(0.0001)
-        # plt.draw()
+        if draw:
+            plt.draw()
+            plt.pause(0.0001)
 
-    def save(self, save_path, epoch):
+    def save(self, save_path, message):
         if not os.path.exists(os.path.join(save_path, "mca_figures")):
             os.makedirs(os.path.join(save_path, "mca_figures"))
-        plt.savefig(os.path.join(save_path, "mca_figures", f"epoch_{epoch}.png"))
+        fig_name = os.path.join(save_path, "mca_figures", f"{message}.png")
+        plt.savefig(fig_name)
+        print(f"saving figure: {fig_name}")
 
 
 class MetricDiversifier:
-    def __init__(self, kmax, reward_fun, active=True, load_p=1, vis=False, vis_coords=None, load_model=None, **kwargs):
-        self.kmin = 25
-        self.k = 25
-        self.kmax = kmax
+    def __init__(self, k, reward_fun, random_cover=False, load_p=1, vis=False, vis_coords=None, load_model=None,
+                 phase_interval=500, dilute_at_goal=False, **kwargs):
+        self.kmin = k  # 5
+        self.k = k
         self.reward_fun = reward_fun
-        self.delta_k = 1
         self.buffer = deque(maxlen=self.k)
-        # self.k_approx = k_approx
-        # self.approximate = False if k_approx is None else True
         self.proposal = False
-        self.proposal_counter = 400
-        self.adjust_counter = 400
+        self.phase_interval = phase_interval
         self.x_proposal = self.init_record(x=None)
-        self.active = active
+        self.random_cover = random_cover
+        self.dilute_at_goal = dilute_at_goal
         self.load_p = load_p
         self.vis = vis
         self.vis_coords = vis_coords
         self.counter = 0
         self.observer = None
         if load_model is not None:
-            self.load_model(load_model)
+            self.buffer = self.load_model(load_model)
+            print(f"Loaded model: {load_model}")
+            print(f"Model size: {self.current_size}")
 
         assert load_p == 1, 'deprecated'
 
@@ -138,14 +140,59 @@ class MetricDiversifier:
             self.buffer[idx]['c'] += 1
         return
 
-    def _load_sample(self, new_pnt, d_func):
-        # load new_pnt if the buffer is not full
-        if self.current_size < self.buffer.maxlen:
+    def propose_point(self, new_pnt, new_pnt_at_goal, verbose=False):
+        if self.counter < self.phase_interval:
+            self.counter += 1
+            if new_pnt['distance'] > self.x_proposal['distance'] and not new_pnt_at_goal:
+                self.x_proposal = new_pnt
+        else:
+            self.counter = 0
+            if self.current_size < self.k and self.x_proposal['x'] is not None:
+                if verbose:
+                    print(f"Appending: {self.current_size} -> {self.current_size + 1}")
+                # self.fit_buffer_size(1)
+                self.buffer.append(self.x_proposal)
+                self.x_proposal = self.init_record()
+            self.proposal = False
+
+    def adjust_set(self, new_pnt, distances_2_new_pnt, d_func):
+        if self.counter < self.phase_interval:
+            self.counter += 1
+            # Calculate pairwise distances
+            self._set_distance(d_func)
+
+            ##################################
+            b_idx = -1
+            b_delta = -np.inf
+            for j in range(self.current_size):
+                j_distances = distances_2_new_pnt.copy()
+                j_distances[j] = np.inf
+                delta_j = j_distances.min() - self.buffer[j]['distance']
+                if delta_j > b_delta and delta_j > 0:
+                    b_delta = delta_j
+                    b_idx = j
+            ##################################
+
+            if b_idx >= 0:
+                # pop
+                del self.buffer[b_idx]
+                # append
+                self.buffer.append(new_pnt)
+                # self.counter = 0
+        else:
+            self.counter = 0
+            if self.dilute_at_goal:
+                self.dilute()
+            self.proposal = True
+
+    def _load_active(self, new_pnt, d_func):
+        # load new_pnt if the buffer is empty
+        if self.current_size < self.kmin:
             self.buffer.append(new_pnt)
             return
 
-        if not np.random.binomial(n=1, p=self.load_p):
-            return
+        # if not np.random.binomial(n=1, p=self.load_p):
+        #     return
 
         self.counter += 1
 
@@ -160,46 +207,25 @@ class MetricDiversifier:
         new_pnt_at_goal = self._set_pnt_reward(new_pnt)
 
         if self.proposal:
-            if self.counter < self.proposal_counter:
-                self.counter += 1
-                if new_pnt['distance'] > self.x_proposal['distance'] and not new_pnt_at_goal:
-                    self.x_proposal = new_pnt
-            else:
-                self.counter = 0
-                if self.k < self.kmax and self.x_proposal['x'] is not None:
-                    print(f"Appending: {self.k} -> {self.k+1}")
-                    self.fit_buffer_size(1)
-                    self.buffer.append(self.x_proposal)
-                    self.x_proposal = self.init_record()
-                self.proposal = False
+            self.propose_point(new_pnt, new_pnt_at_goal)
         else:
-            if self.counter < self.adjust_counter:
-                self.counter += 1
-                # Calculate pairwise distances
-                self._set_distance(d_func)
+            self.adjust_set(new_pnt, distances_2_new_pnt, d_func)
 
-                ##################################
-                b_idx = -1
-                b_delta = -np.inf
-                for j in range(self.current_size):
-                    j_distances = distances_2_new_pnt.copy()
-                    j_distances[j] = np.inf
-                    delta_j = j_distances.min() - self.buffer[j]['distance']
-                    if delta_j > b_delta and delta_j > 0:
-                        b_delta = delta_j
-                        b_idx = j
-                ##################################
-
-                if b_idx >= 0:
-                    # pop
-                    del self.buffer[b_idx]
-                    # append
-                    self.buffer.append(new_pnt)
-                    # self.counter = 0
-            else:
-                self.counter = 0
-                self.dilute()
-                self.proposal = True
+    def _load_inactive(self, new_point, verbose=False):
+        # load new_pnt if the buffer is empty
+        if self.current_size < self.kmin:
+            self.buffer.append(new_point)
+            return
+        if not np.random.binomial(n=1, p=0.005):
+            return
+        if self.current_size > self.k:
+            self.buffer.popleft()
+        # self.fit_buffer_size(1)
+        self.buffer.append(new_point)
+        if self.dilute_at_goal:
+            self.dilute(verbose=False)
+        if verbose:
+            print(f"Buffer size: {self.current_size}")
 
     def load_new_point(self, new_point, d_func=None):
         '''
@@ -210,17 +236,10 @@ class MetricDiversifier:
         '''
         if new_point is None:
             return
-        if self.active:
-            self._load_sample(new_point, d_func)
+        if self.random_cover:
+            self._load_inactive(new_point)
         else:
-            if not np.random.binomial(n=1, p=0.1):
-                return
-            if self.k > self.kmax:
-                self.buffer.popleft()
-            self.fit_buffer_size(1)
-            self.buffer.append(new_point)
-            self.dilute(verbose=False)
-            print(f"Buffer size: {self.current_size}")
+            self._load_active(new_point, d_func)
 
     def _set_pnt_reward(self, pnt):
         for i in range(self.current_size):
@@ -230,10 +249,8 @@ class MetricDiversifier:
 
     def dilute(self, verbose=True):
         _size = self.current_size
-
         if self.current_size <= self.kmin:
             return False
-
         dilute = False
         dilutions = []
         for i in range(self.current_size):
@@ -246,12 +263,11 @@ class MetricDiversifier:
                     dilute = True
         if not dilute:
             return False
-
         dilutions = list(set(dilutions))
         dilutions.sort(reverse=True)
         for idx in dilutions:
             del self.buffer[idx]
-        self.fit_buffer_size()
+        # self.fit_buffer_size()
         if verbose:
             print(f"Diluting: {_size} -> {self.current_size}")
         return dilute
@@ -274,7 +290,7 @@ class MetricDiversifier:
             batch.append({'x': s_record['x'], 'info': info, 'g': g_record['x_feat']})
         return batch
 
-    def _show(self):
+    def _update_figure(self):
         pts = [self.buffer[idx]['x'][self.vis_coords] for idx in range(self.current_size)]
         prop_pts = None
         if self.proposal and self.x_proposal['x'] is not None:
@@ -287,15 +303,19 @@ class MetricDiversifier:
         if self.vis and self.vis_coords is not None:
             if self.observer is None:
                 self.observer = VisObserver(len(self.vis_coords))
-            self._show()
+            self._update_figure()
 
-    def save(self, save_path, epoch):
+    def save(self, save_path=None, message=None):
+        if save_path is None:
+            save_path = self.save_path
+        if message is None:
+            message = f"K{self.current_size}"
         # save visualization
         self.visualize()
         if self.observer is not None:
-            self.observer.save(save_path, epoch)
+            self.observer.save(save_path, message)
         # save cover model
-        self.save_model(save_path, epoch)
+        self.save_model(save_path, message)
 
     @property
     def current_size(self):
@@ -307,41 +327,29 @@ class MetricDiversifier:
             x_feat = x
         return {'x': x, 'x_feat': x_feat, 'c': 0, 'info': info, 'distance': distance, 'nn': None}
 
-    def fit_buffer_size(self, delta_k=None):
-        if delta_k is None:
-            self.k = self.current_size
-        else:
-            self.k += delta_k
-        # self.k_approx = self.k
-        return self._adjust_buffer()
-
-    def _adjust_buffer(self):
-        buffer = self.buffer.copy()
-        self.buffer = deque(maxlen=self.k)
-        [self.buffer.append(record) for record in buffer]
-
-    def save_model(self, save_path, epoch):
+    def save_model(self, save_path, message=None):
         save_dir = os.path.join(save_path, "mca_cover")
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
-
-        f_name = f"{save_dir}/model_{epoch}.json"
+        if message is None:
+            message = 'cover'
+        f_name = f"{save_dir}/{message}.json"
         with open(f_name, 'w') as outfile:
             json_str = json.dumps(self._buffer_2_dict(), indent=4, sort_keys=True)
             outfile.write(json_str)
+        print(f"saving cover: {f_name}")
 
-    def load_model(self, load_path):
+    @staticmethod
+    def load_model(load_path):
         with open(load_path, 'r') as infile:
-            buffer = json.load(infile)
-        self.buffer = deque(maxlen=len(buffer))
-        for key, val in buffer.items():
-            self.buffer.append(val)
-        self.k = len(self.buffer)
-        for i in range(self.current_size):
-            self.buffer[i]['x'] = np.asarray(self.buffer[i]['x'])
-            self.buffer[i]['x_feat'] = np.asarray(self.buffer[i]['x_feat'])
-        print(f"Loaded model: {load_path}")
-        print(f"Model size: {self.current_size}")
+            json_buffer = json.load(infile)
+        buffer = deque(maxlen=len(json_buffer))
+        for key, val in json_buffer.items():
+            buffer.append(val)
+        for i in range(len(buffer)):
+            buffer[i]['x'] = np.asarray(buffer[i]['x'])
+            buffer[i]['x_feat'] = np.asarray(buffer[i]['x_feat'])
+        return buffer
 
 
 if __name__ == '__main__':
@@ -352,10 +360,17 @@ if __name__ == '__main__':
         else:
             return 0
 
-    active = True
-    uniformizer = MetricDiversifier(kmax=200, reward_fun=reward_fun, vis=True, load_p=1, vis_coords=[0, 1],
+    random_cover = True
+    save_path = 'logs/2020-01-01-TwoGaussians'
+    if random_cover:
+        save_path = f"{save_path}/random"
+    else:
+        save_path = f"{save_path}/learned"
+
+    uniformizer = MetricDiversifier(k=100, reward_fun=reward_fun, vis=True, load_p=1, vis_coords=[0, 1],
                                     # load_model='/home/nir/work/git/baselines/logs/01-01-2020/mca_cover/0_model.json'
-                                    active=active
+                                    prop_adjust_interval=1000,
+                                    random_cover=random_cover, save_path=save_path
                                     )
 
     dists_prior = [0.5, 0.5]
@@ -370,6 +385,6 @@ if __name__ == '__main__':
         pnt = uniformizer.init_record(x=x)
         uniformizer.load_new_point(pnt)
         counter += 1
-        if counter % 1000 == 0:
-            uniformizer.save(save_path='logs/01-01-2020', epoch=counter)
-            print(f"active;{active}, epoch: {counter}, buffer size: {uniformizer.current_size}")
+        if counter % 10000 == 0:
+            uniformizer.save(save_path=save_path, message=counter)
+            print(f"random cover;{random_cover}, epoch: {counter}, cover size: {uniformizer.current_size}")

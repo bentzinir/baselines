@@ -16,7 +16,7 @@ from baselines.her.metric_diversification import MetricDiversifier
 np.set_printoptions(precision=6)
 
 
-def save(epoch, policy, evaluator, rank, best_success_rate, save_path, save_interval):
+def save(epoch, policy, evaluator, rank, best_success_rate, save_path, save_interval, k):
     if evaluator.active:
         # save the policy if it's better than the previous ones
         success_rate = mpi_average(evaluator.current_success_rate())
@@ -24,10 +24,10 @@ def save(epoch, policy, evaluator, rank, best_success_rate, save_path, save_inte
         model_path = os.path.expanduser(model_path)
         if rank == 0 and success_rate > best_success_rate and save_path:
             best_success_rate = success_rate
-            save_message = f'(new best, rate: {best_success_rate:.2f}, best path: {model_path})'
+            save_message = f'(new best, rate: {best_success_rate:.2f}, best path: {model_path}, cover size: {k})'
             policy.save(model_path, message=save_message)
         if rank == 0 and save_interval > 0 and epoch % save_interval == 0 and save_path:
-            save_message = f'(periodic, current best:{best_success_rate:.2f})'
+            save_message = f'(periodic, current best:{best_success_rate:.2f}, cover size: {k})'
             policy.save(model_path, message=save_message)
     return best_success_rate
 
@@ -54,9 +54,8 @@ def mpi_average(value):
     return mpi_moments(np.array(value))[0]
 
 
-def train(*, policy, rollout_worker, evaluator,
-          n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
-          save_path, demo_file, mca, **kwargs):
+def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
+          save_path, demo_file, mca, random_interval=2, **kwargs):
     rank = MPI.COMM_WORLD.Get_rank()
 
     logger.info("Training...")
@@ -70,21 +69,24 @@ def train(*, policy, rollout_worker, evaluator,
         rollout_worker.clear_history()
         mca.rollout_worker.clear_history()
         for n1 in range(n_cycles):
-            random = (n1 % 2) == 1
+            random = (n1 % random_interval) == 0
             episode = rollout_worker.generate_rollouts()
             # mca.store_ex_episode(episode)
             mca_episode = mca.rollout_worker.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs,
                                                                                             # farthest=random
                                                                                             ),
                                                                random=random)
-            # if random:
+
             mca.load_episode(mca_episode)
-            # episode = mca.overload_sg(episode, mca_episode)
-            # mca_episode = mca.overload_ss(mca_episode)
-            if not random:
-                mca.policy.store_episode(mca_episode)
+            episode = mca.overload_sg(episode, mca_episode)
+            mca_episode = mca.overload_ss(mca_episode)
+
+            if random:
+                continue
 
             policy.store_episode(episode)
+            mca.policy.store_episode(mca_episode)
+
             for n2 in range(n_batches):
                 policy.train()
                 mca.policy.train()
@@ -100,15 +102,17 @@ def train(*, policy, rollout_worker, evaluator,
             mca.evaluator.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs),
                                             record=record)
             if record:
-                mca.state_model.save(save_path, epoch)
+                mca.state_model.save(save_path, message=None)
 
         # record logs
         log(epoch, evaluator, rollout_worker, policy, rank, "policy")
         log(epoch, mca.evaluator, mca.rollout_worker, mca.policy, rank, "explorer")
 
         # save the policy if it's better than the previous ones
-        best_success_rate = save(epoch, policy, evaluator, rank, best_success_rate, save_path + '/models', policy_save_interval)
-        mca.best_success_rate = save(epoch, mca.policy, mca.evaluator, rank, mca.best_success_rate, save_path + '/mca_models', policy_save_interval)
+        best_success_rate = save(epoch, policy, evaluator, rank, best_success_rate, save_path + '/models',
+                                 policy_save_interval, k=None)
+        mca.best_success_rate = save(epoch, mca.policy, mca.evaluator, rank, mca.best_success_rate,
+                                     save_path + '/mca_models', policy_save_interval, k=mca.state_model.current_size)
 
         # make sure that different threads have different seeds
         local_uniform = np.random.uniform(size=(1,))
@@ -235,21 +239,30 @@ def learn(*, network, env, mca_env, total_timesteps,
                                                                                           ss=kwargs['ss']  # True
                                                                                           )
 
-    mca_state_model = MetricDiversifier(kmax=kwargs['k'], reward_fun=reward_fun, vis=True, vis_coords=coord_dict['vis'],
-                                        load_model=kwargs['load_mca_path'], active=True)
+    mca_state_model = MetricDiversifier(k=kwargs['k'], reward_fun=reward_fun, vis=True, vis_coords=coord_dict['vis'],
+                                        load_model=kwargs['load_mca_path'], save_path=log_path,
+                                        random_cover=kwargs["random_cover"], dilute_at_goal=kwargs['dilute_at_goal'])
 
     mca = MCA(policy=mca_policy, rollout_worker=mca_rw, evaluator=mca_evaluator, state_model=mca_state_model,
-              sharing=kwargs["sharing"], coord_dict=coord_dict, active=mca_active, ss=kwargs['ss'])
+              sharing=kwargs["sharing"], coord_dict=coord_dict, ss=kwargs['ss'])
     ##############################################################################
 
     n_cycles = params['n_cycles']
-    n_epochs = total_timesteps // n_cycles // rollout_worker.T // rollout_worker.rollout_batch_size
+    if 'n_epochs' not in kwargs:
+        n_epochs = total_timesteps // n_cycles // rollout_worker.T // rollout_worker.rollout_batch_size
+    else:
+        n_epochs = int(kwargs['n_epochs'])
+
+    if kwargs["random_cover"]:
+        random_interval = 1
+    else:
+        random_interval = 2
 
     return train(
         save_path=log_path, policy=policy, rollout_worker=rollout_worker,
         evaluator=evaluator, n_epochs=n_epochs, n_test_rollouts=params['n_test_rollouts'],
         n_cycles=params['n_cycles'], n_batches=params['n_batches'],
-        policy_save_interval=policy_save_interval, demo_file=demo_file, mca=mca)
+        policy_save_interval=policy_save_interval, demo_file=demo_file, mca=mca, random_interval=random_interval)
 
 
 @click.command()
