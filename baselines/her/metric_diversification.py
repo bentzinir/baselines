@@ -60,13 +60,16 @@ class VisObserver:
 
 class MetricDiversifier:
     def __init__(self, k, reward_fun, random_cover=False, load_p=1, vis=False, vis_coords=None, load_model=None,
-                 phase_interval=500, dilute_at_goal=False, **kwargs):
-        self.kmin = k  # 5
+                 phase_length=1000, dilute_at_goal=False, **kwargs):
+        if random_cover:
+            self.kmin = k
+        else:
+            self.kmin = 10
         self.k = k
         self.reward_fun = reward_fun
         self.buffer = deque(maxlen=self.k)
         self.proposal = False
-        self.phase_interval = phase_interval
+        self.phase_length = phase_length
         self.x_proposal = self.init_record(x=None)
         self.random_cover = random_cover
         self.dilute_at_goal = dilute_at_goal
@@ -79,8 +82,6 @@ class MetricDiversifier:
             self.buffer = self.load_model(load_model)
             print(f"Loaded model: {load_model}")
             print(f"Model size: {self.current_size}")
-
-        assert load_p == 1, 'deprecated'
 
     def _buffer_2_array(self, val, idxs=None):
         if idxs is None:
@@ -140,50 +141,44 @@ class MetricDiversifier:
             self.buffer[idx]['c'] += 1
         return
 
-    def propose_point(self, new_pnt, new_pnt_at_goal, verbose=False):
-        if self.counter < self.phase_interval:
-            self.counter += 1
-            if new_pnt['distance'] > self.x_proposal['distance'] and not new_pnt_at_goal:
-                self.x_proposal = new_pnt
+    def update_proposal(self, new_pnt):
+        # check that new_pnt is not "at goal" w.r.t any existing point
+        if self.dilute_at_goal:
+            new_pnt_at_goal = self._set_pnt_reward(new_pnt)
         else:
-            self.counter = 0
-            if self.current_size < self.k and self.x_proposal['x'] is not None:
-                if verbose:
-                    print(f"Appending: {self.current_size} -> {self.current_size + 1}")
-                # self.fit_buffer_size(1)
-                self.buffer.append(self.x_proposal)
-                self.x_proposal = self.init_record()
-            self.proposal = False
+            new_pnt_at_goal = False
+        if new_pnt['distance'] > self.x_proposal['distance'] and not new_pnt_at_goal:
+            self.x_proposal = new_pnt
+
+    def append_proposal(self, verbose=False):
+        if self.current_size < self.k and self.x_proposal['x'] is not None:
+            if verbose:
+                print(f"Appending: {self.current_size} -> {self.current_size + 1}")
+            # self.fit_buffer_size(1)
+            self.buffer.append(self.x_proposal)
+            self.x_proposal = self.init_record()
 
     def adjust_set(self, new_pnt, distances_2_new_pnt, d_func):
-        if self.counter < self.phase_interval:
-            self.counter += 1
-            # Calculate pairwise distances
-            self._set_distance(d_func)
+        # Calculate pairwise distances
+        self._set_distance(d_func)
 
-            ##################################
-            b_idx = -1
-            b_delta = -np.inf
-            for j in range(self.current_size):
-                j_distances = distances_2_new_pnt.copy()
-                j_distances[j] = np.inf
-                delta_j = j_distances.min() - self.buffer[j]['distance']
-                if delta_j > b_delta and delta_j > 0:
-                    b_delta = delta_j
-                    b_idx = j
-            ##################################
+        ##################################
+        b_idx = -1
+        b_delta = -np.inf
+        for j in range(self.current_size):
+            j_distances = distances_2_new_pnt.copy()
+            j_distances[j] = np.inf
+            delta_j = j_distances.min() - self.buffer[j]['distance']
+            if delta_j > b_delta and delta_j > 0:
+                b_delta = delta_j
+                b_idx = j
+        ##################################
 
-            if b_idx >= 0:
-                # pop
-                del self.buffer[b_idx]
-                # append
-                self.buffer.append(new_pnt)
-                # self.counter = 0
-        else:
-            self.counter = 0
-            if self.dilute_at_goal:
-                self.dilute()
-            self.proposal = True
+        if b_idx >= 0:
+            # pop
+            del self.buffer[b_idx]
+            # append
+            self.buffer.append(new_pnt)
 
     def _load_active(self, new_pnt, d_func):
         # load new_pnt if the buffer is empty
@@ -191,10 +186,8 @@ class MetricDiversifier:
             self.buffer.append(new_pnt)
             return
 
-        # if not np.random.binomial(n=1, p=self.load_p):
-        #     return
-
-        self.counter += 1
+        if not np.random.binomial(n=1, p=self.load_p):
+            return
 
         # calculate the distance of new_pnt to all points
         X = self._buffer_2_array(val='x', idxs=list(range(self.current_size)))
@@ -203,13 +196,23 @@ class MetricDiversifier:
 
         new_pnt['distance'] = distances_2_new_pnt.min()
 
-        # check that new_pnt is not "at goal" w.r.t any existing point
-        new_pnt_at_goal = self._set_pnt_reward(new_pnt)
+        self.counter += 1
 
-        if self.proposal:
-            self.propose_point(new_pnt, new_pnt_at_goal)
-        else:
+        toggle_phase = self.counter % self.phase_length == 0
+
+        if self.current_size >= self.k:
             self.adjust_set(new_pnt, distances_2_new_pnt, d_func)
+            if toggle_phase and self.dilute_at_goal:
+                self.dilute()
+        else:
+            if toggle_phase:
+                self.proposal = not self.proposal
+            if self.proposal:
+                self.update_proposal(new_pnt)
+                if toggle_phase:
+                    self.append_proposal()
+            else:
+                self.adjust_set(new_pnt, distances_2_new_pnt, d_func)
 
     def _load_inactive(self, new_point, verbose=False):
         # load new_pnt if the buffer is empty
@@ -360,7 +363,7 @@ if __name__ == '__main__':
         else:
             return 0
 
-    random_cover = True
+    random_cover = False
     save_path = 'logs/2020-01-01-TwoGaussians'
     if random_cover:
         save_path = f"{save_path}/random"

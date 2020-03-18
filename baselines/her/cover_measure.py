@@ -9,6 +9,8 @@ import os, sys
 import itertools
 import numpy as np
 from matplotlib import pyplot as plt
+import collections
+from baselines.her.metric_diversification import Bunch
 
 
 def plot(cover_a, cover_b):
@@ -64,12 +66,49 @@ def none_init():
     return {'x': None, 'info': None, 'g': None}
 
 
-def internal_radius(env, venv, reward_fun, cover, nsamples, nsteps, vis_coords=None):
+def internal_radius(env, reward_fun, cover, nsamples, nsteps, vis_coords=None):
+    _hit_time = [None] * nsamples
+    for ns in range(nsamples):
+        taus = [[] for _ in range(len(cover))]
+        for k in range(len(cover)):
+            info = cover[k]['info']
+            if isinstance(info, collections.Mapping):
+                info = Bunch(info)
+            ex_init = {'x': cover[k]['x'], 'info': info, 'g': cover[k]['x_feat']}
+            o = env.reset(ex_init=ex_init)
+            for n in range(nsteps):
+                taus[k].append(o["achieved_goal"])
+                o, *_ = env.step(env.action_space.sample())
+
+        hit = False
+        for t in range(nsteps):
+            if hit:
+                break
+            a_goals_t = [tau[t] for tau in taus]
+            for pair in itertools.combinations(a_goals_t, 2):
+                if reward_fun(ag_2=pair[0], g=pair[1], info={}):
+                    _hit_time[ns] = t
+                    hit = True
+                    break
+
+    hit_time = []
+    for item in _hit_time:
+        if item is None:
+            hit_time.append(nsteps)
+        else:
+            hit_time.append(item)
+    return hit_time
+
+
+def _internal_radius(env, venv, reward_fun, cover, nsamples, nsteps, vis_coords=None):
     # observer = VisObserver()
     k = len(cover)
     ex_inits = [none_init()] * venv.num_envs
     for idx, item in enumerate(cover):
-        ex_inits[idx] = {'x': item['x'], 'info': item['info'], 'g': item['x_feat']}
+        info = item['info']
+        if isinstance(info, collections.Mapping):
+            info = Bunch(info)
+        ex_inits[idx] = {'x': item['x'], 'info': info, 'g': item['x_feat']}
 
     _hit_time = [None] * nsamples
     for ns in range(nsamples):
@@ -108,13 +147,14 @@ def main(args):
     directories = os.listdir(log_directory)
     k_vec = [int(item.split('K')[-1]) for item in directories]
     k_vec.sort()
-    k_vec = k_vec[:10]
-    args.num_env = k_vec[-1]
-    venv = build_env(args, extra_args=extra_args)
-    nsteps = 50
-    nsamples = 50
+    # k_vec = k_vec[:2]
+    # args.num_env = 2
+    # venv = build_env(args, extra_args=extra_args)
+    nsteps = 100
+    nsamples = 20
     random_radius = {}
     mca_radius = {}
+
     for k in k_vec:
         k_dirname = os.path.join(log_directory, f"K{k}")
 
@@ -123,17 +163,13 @@ def main(args):
         mca_cover_fname = os.path.join(k_dirname, f"learned/mca_cover/K{k}.json")
         mca_cover = MetricDiversifier.load_model(mca_cover_fname)
         print(f"Measuring {k} lift")
-        random_radius[k] = internal_radius(env, venv, reward_fun, random_cover, nsamples=nsamples, nsteps=nsteps)
-        mca_radius[k] = internal_radius(env, venv, reward_fun, mca_cover, nsamples=nsamples, nsteps=nsteps)
-
-    venv.close()
+        # random_radius[k] = _internal_radius(env, venv, reward_fun, random_cover, nsamples=nsamples, nsteps=nsteps)
+        # mca_radius[k] = _internal_radius(env, venv, reward_fun, mca_cover, nsamples=nsamples, nsteps=nsteps)
+        random_radius[k] = internal_radius(env, reward_fun, random_cover, nsamples=nsamples, nsteps=nsteps)
+        mca_radius[k] = internal_radius(env, reward_fun, mca_cover, nsamples=nsamples, nsteps=nsteps)
+    # venv.close()
     plot(random_radius, mca_radius)
 
 
 if __name__ == '__main__':
     main(sys.argv)
-    # parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    # parser.add_argument('--env', help='environment ID', type=str, default='FetchReach-v0')
-    # parser.add_argument('--seed', help='RNG seed', type=int, default=None)
-    # parser.add_argument('--load', help='path to cover', type=str, default='none')
-    # args = parser.parse_args()

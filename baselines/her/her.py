@@ -78,11 +78,12 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
                                                                random=random)
 
             mca.load_episode(mca_episode)
+
             episode = mca.overload_sg(episode, mca_episode)
             mca_episode = mca.overload_ss(mca_episode)
 
-            if random:
-                continue
+            # if random:
+            #     continue
 
             policy.store_episode(episode)
             mca.policy.store_episode(mca_episode)
@@ -228,6 +229,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     active = kwargs["mode"] in ["basic", "exploration_module"]
     policy, rollout_worker, evaluator, params, *_ = prepare_agent(env, eval_env, active=active, scope="main")
 
+    n_cycles = params['n_cycles']
     ##############################################################################
     # Maximum Coverage Agent
     mca_active = kwargs["mode"] in ["exploration_module", "maximum_span"]
@@ -239,24 +241,33 @@ def learn(*, network, env, mca_env, total_timesteps,
                                                                                           ss=kwargs['ss']  # True
                                                                                           )
 
-    mca_state_model = MetricDiversifier(k=kwargs['k'], reward_fun=reward_fun, vis=True, vis_coords=coord_dict['vis'],
-                                        load_model=kwargs['load_mca_path'], save_path=log_path,
-                                        random_cover=kwargs["random_cover"], dilute_at_goal=kwargs['dilute_at_goal'])
+    load_p = 0.1
+    phase_length = n_cycles * rollout_worker.T * mca_rw.rollout_batch_size * load_p
+
+    mca_state_model = MetricDiversifier(k=kwargs['k'],
+                                        reward_fun=reward_fun,
+                                        vis=True,
+                                        vis_coords=coord_dict['vis'],
+                                        load_model=kwargs['load_mca_path'],
+                                        save_path=log_path,
+                                        random_cover=kwargs["random_cover"],
+                                        load_p=load_p,
+                                        phase_length=phase_length,
+                                        dilute_at_goal=kwargs['dilute_at_goal'])
 
     mca = MCA(policy=mca_policy, rollout_worker=mca_rw, evaluator=mca_evaluator, state_model=mca_state_model,
               sharing=kwargs["sharing"], coord_dict=coord_dict, ss=kwargs['ss'])
     ##############################################################################
 
-    n_cycles = params['n_cycles']
     if 'n_epochs' not in kwargs:
-        n_epochs = total_timesteps // n_cycles // rollout_worker.T // rollout_worker.rollout_batch_size
+        n_epochs = total_timesteps // n_cycles // rollout_worker.T // mca_rw.rollout_batch_size
     else:
         n_epochs = int(kwargs['n_epochs'])
 
     if kwargs["random_cover"]:
         random_interval = 1
     else:
-        random_interval = 2
+        random_interval = 5
 
     return train(
         save_path=log_path, policy=policy, rollout_worker=rollout_worker,

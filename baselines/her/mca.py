@@ -4,7 +4,7 @@ from baselines.her.visualizer import VisObserver
 
 
 class MCA:
-    def __init__(self, policy, rollout_worker, evaluator, state_model, coord_dict, n_samples=30,
+    def __init__(self, policy, rollout_worker, evaluator, state_model, coord_dict, #n_samples=30,
                  ss=False, sharing=False, vis_obs=False):
         self.policy = policy
         self.rollout_worker = rollout_worker
@@ -15,7 +15,7 @@ class MCA:
         self.sharing = sharing
         self.ex_experience = None
         self.coord_dict = coord_dict
-        self.n_samples = n_samples
+        # self.n_samples = n_samples
         if vis_obs:
             self.visualizer = VisObserver()
 
@@ -40,8 +40,8 @@ class MCA:
             infos = np.full(obs.shape, None)
 
         p = np.random.permutation(len(obs))
-        if len(p) > self.n_samples:
-            p = p[:self.n_samples]
+        # if len(p) > self.n_samples:
+        #     p = p[:self.n_samples]
         obs = obs[p]
         ags = ags[p]
         infos = [infos[p_idx] for p_idx in p]

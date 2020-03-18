@@ -70,7 +70,6 @@ class RolloutWorker:
 
         num_envs = self.venv.num_envs
 
-        # reached_goal = [False] * num_envs
         # if self.exploration == 'go_explore_random':
         #     random_action = [self.policy._random_action(num_envs)] * self.T
         # elif self.exploration == 'go_explore_brownian':
@@ -80,13 +79,14 @@ class RolloutWorker:
         # else:
         #     random_action = [None] * self.T
 
-        reached_goal = [True] * num_envs
-        # random_action = self.policy._random_action(num_envs)
+        random_action = self.policy._random_action(num_envs)
 
         if random:
-            self.exploration = 'go_explore'  # 'go_explore_random'
+            self.exploration = 'go_explore_random'  # 'go_explore_random'
+            reached_goal = [True] * num_envs
         else:
-            self.exploration = 'eps_greedy'
+            self.exploration = 'go_explore'  # 'eps_greedy'
+            reached_goal = [False] * num_envs
 
         hit_time = [None] * num_envs
 
@@ -106,8 +106,8 @@ class RolloutWorker:
                 exploration=self.exploration,
                 go=np.logical_not(reached_goal),
                 # random_action=random_action[t],
-                # random_action=random_action,
-                random_action=self.policy._random_action(num_envs),
+                random_action=random_action,
+                # random_action=self.policy._random_action(num_envs),
                 # inputs for go_explore_Q
                 # root_Qs=root_Qs,
                 acts=acts,

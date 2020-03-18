@@ -55,7 +55,8 @@ def make_sample_her_transitions(replay_strategy, replay_k, reward_fun, **kwargs)
         reward_params['info'] = info
         transitions['r'] = reward_fun(**reward_params)
 
-        # we need to following asset because we calculate the minimal distance between points according to the 0-1 reward
+        # we need to following assertion because we calculate the minimal distance
+        # between points according to the 0-1 reward
         assert np.all(np.logical_or(transitions['r'] == 0, transitions['r'] == 1))
         transitions = {k: transitions[k].reshape(batch_size, *transitions[k].shape[1:])
                        for k in transitions.keys()}

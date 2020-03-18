@@ -1,7 +1,7 @@
 #!/bin/bash
 
 TRAIN="False"
-ENV="Flickers-v0"
+ENV="FetchReach-v1"
 #NUM_TIMESTEPS="10000"
 #N_EPOCHS="301"
 SAVE_VIDEO_INTERVAL="100000000"
@@ -12,7 +12,7 @@ MCA_ACTION_L2="0"
 SHARING="False"
 NUM_ENV="32"
 MAX_U="1"
-SS="True"
+SS="False"
 DILUTE_AT_GOAL="False"
 
 k=0
@@ -28,7 +28,7 @@ do
     #######################
     #### Learn k-Random cover
     RANDOM_COVER="True"
-    N_EPOCHS="51"
+    N_EPOCHS="21"
     LOG_PATH="${BASE_LOG_PATH}/${DATE}-${ENV}/K${k}/random"
     /home/nir/work/git/venv/gym_venv_mj150/bin/python3.6 -m baselines.run --alg=her --env=$ENV\
      --n_epochs=$N_EPOCHS --save_video_interval=$SAVE_VIDEO_INTERVAL --log_path=$LOG_PATH\
@@ -38,7 +38,7 @@ do
     #######################
     #### Learn k-MC cover
     RANDOM_COVER="False"
-    N_EPOCHS="301"
+    N_EPOCHS="201"
     LOG_PATH="${BASE_LOG_PATH}/${DATE}-${ENV}/K${k}/learned"
     /home/nir/work/git/venv/gym_venv_mj150/bin/python3.6 -m baselines.run --alg=her --env=$ENV\
      --n_epochs=$N_EPOCHS --save_video_interval=$SAVE_VIDEO_INTERVAL --log_path=$LOG_PATH\
