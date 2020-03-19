@@ -18,6 +18,9 @@ DEFAULT_ENV_PARAMS = {
     'FetchReach100-v1': {
         'n_cycles': 10,
     },
+    'HandReach-v0': {
+        'n_cycles': 10,
+    },
 }
 
 

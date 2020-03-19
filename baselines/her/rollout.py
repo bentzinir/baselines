@@ -82,10 +82,10 @@ class RolloutWorker:
         random_action = self.policy._random_action(num_envs)
 
         if random:
-            self.exploration = 'go_explore_random'  # 'go_explore_random'
+            self.exploration = 'go_explore'  # 'go_explore_random'
             reached_goal = [True] * num_envs
         else:
-            self.exploration = 'go_explore'  # 'eps_greedy'
+            self.exploration = 'eps_greedy'  # 'eps_greedy'
             reached_goal = [False] * num_envs
 
         hit_time = [None] * num_envs

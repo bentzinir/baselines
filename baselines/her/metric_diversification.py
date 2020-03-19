@@ -64,7 +64,7 @@ class MetricDiversifier:
         if random_cover:
             self.kmin = k
         else:
-            self.kmin = 10
+            self.kmin = 5
         self.k = k
         self.reward_fun = reward_fun
         self.buffer = deque(maxlen=self.k)
@@ -203,7 +203,7 @@ class MetricDiversifier:
         if self.current_size >= self.k:
             self.adjust_set(new_pnt, distances_2_new_pnt, d_func)
             if toggle_phase and self.dilute_at_goal:
-                self.dilute()
+                self.dilute(verbose=True)
         else:
             if toggle_phase:
                 self.proposal = not self.proposal
