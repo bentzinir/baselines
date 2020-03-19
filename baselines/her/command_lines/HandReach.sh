@@ -1,7 +1,7 @@
 #!/bin/bash
 
 TRAIN="False"
-ENV="HandReach10-v0"
+ENV="HandReach-v0"
 #NUM_TIMESTEPS="10000"
 #N_EPOCHS="301"
 SAVE_VIDEO_INTERVAL="100000000"
@@ -30,7 +30,7 @@ do
     RANDOM_COVER="True"
     N_EPOCHS="11"
     LOG_PATH="${BASE_LOG_PATH}/${DATE}-${ENV}/K${k}/random"
-    /home/nir/work/git/venv/gym_venv_mj150/bin/python3.6 -m baselines.run --alg=her --env=$ENV\
+     xvfb-run -s "-screen 0 1400x900x24" /home/ron/nir/work/git/venvs/gym_venv_mj150/bin/python3.6 -m baselines.run --alg=her --env=$ENV\
      --n_epochs=$N_EPOCHS --save_video_interval=$SAVE_VIDEO_INTERVAL --log_path=$LOG_PATH\
       --mode=$MODE --mca_exploration=$MCA_EXPXLORATION --mca_action_l2=$MCA_ACTION_L2 --sharing=$SHARING\
        --num_env=$NUM_ENV --max_u=$MAX_U --ss=$SS --k=$k --random_cover=$RANDOM_COVER --dilute_at_goal=$DILUTE_AT_GOAL
@@ -40,7 +40,7 @@ do
     RANDOM_COVER="False"
     N_EPOCHS="221"
     LOG_PATH="${BASE_LOG_PATH}/${DATE}-${ENV}/K${k}/learned"
-    /home/nir/work/git/venv/gym_venv_mj150/bin/python3.6 -m baselines.run --alg=her --env=$ENV\
+    xvfb-run -s "-screen 0 1400x900x24" /home/ron/nir/work/git/venvs/gym_venv_mj150/bin/python3.6 -m baselines.run --alg=her --env=$ENV\
      --n_epochs=$N_EPOCHS --save_video_interval=$SAVE_VIDEO_INTERVAL --log_path=$LOG_PATH\
       --mode=$MODE --mca_exploration=$MCA_EXPXLORATION --mca_action_l2=$MCA_ACTION_L2 --sharing=$SHARING\
        --num_env=$NUM_ENV --max_u=$MAX_U --ss=$SS --k=$k --random_cover=$RANDOM_COVER --dilute_at_goal=$DILUTE_AT_GOAL
