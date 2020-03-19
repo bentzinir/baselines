@@ -55,7 +55,7 @@ def mpi_average(value):
 
 
 def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
-          save_path, demo_file, mca, random_interval=2, **kwargs):
+          save_path, demo_file, mca, random_cover=False, **kwargs):
     rank = MPI.COMM_WORLD.Get_rank()
 
     logger.info("Training...")
@@ -64,18 +64,17 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
     if policy.bc_loss == 1: policy.init_demo_buffer(demo_file)  # initialize demo buffer if training with demonstrations
     n_mca_envs = mca.rollout_worker.venv.num_envs
     # num_timesteps = n_epochs * n_cycles * rollout_length * number of rollout workers
+
     for epoch in range(n_epochs):
         # train
         rollout_worker.clear_history()
         mca.rollout_worker.clear_history()
         for n1 in range(n_cycles):
-            random = (n1 % random_interval) == 0
+            # random = (n1 % random_interval) == 0
             episode = rollout_worker.generate_rollouts()
             # mca.store_ex_episode(episode)
-            mca_episode = mca.rollout_worker.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs,
-                                                                                            # farthest=random
-                                                                                            ),
-                                                               random=random)
+            mca_episode = mca.rollout_worker.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs,),
+                                                               random=random_cover)
 
             mca.load_episode(mca_episode)
 
@@ -100,8 +99,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         for n3 in range(n_test_rollouts):
             record = n3 == 0 and epoch % policy_save_interval == 0
             evaluator.generate_rollouts(record=record)
-            mca.evaluator.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs),
-                                            record=record)
+            mca.evaluator.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs), record=record, random=random_cover)
             if record:
                 mca.state_model.save(save_path, message=None)
 
@@ -241,7 +239,7 @@ def learn(*, network, env, mca_env, total_timesteps,
                                                                                           ss=kwargs['ss']  # True
                                                                                           )
 
-    load_p = 0.1
+    load_p = 0.5
     phase_length = n_cycles * rollout_worker.T * mca_rw.rollout_batch_size * load_p
 
     mca_state_model = MetricDiversifier(k=kwargs['k'],
@@ -264,16 +262,16 @@ def learn(*, network, env, mca_env, total_timesteps,
     else:
         n_epochs = int(kwargs['n_epochs'])
 
-    if kwargs["random_cover"]:
-        random_interval = 1
-    else:
-        random_interval = 5
+    # if kwargs["random_cover"]:
+    #     random_interval = 1
+    # else:
+    #     random_interval = 2
 
     return train(
         save_path=log_path, policy=policy, rollout_worker=rollout_worker,
         evaluator=evaluator, n_epochs=n_epochs, n_test_rollouts=params['n_test_rollouts'],
         n_cycles=params['n_cycles'], n_batches=params['n_batches'],
-        policy_save_interval=policy_save_interval, demo_file=demo_file, mca=mca, random_interval=random_interval)
+        policy_save_interval=policy_save_interval, demo_file=demo_file, mca=mca, random_cover=kwargs['random_cover'])
 
 
 @click.command()
