@@ -1,7 +1,7 @@
 #!/bin/bash
 
 TRAIN="False"
-ENV="HandReach10-v0"
+ENV="HandReach20-v0"
 #NUM_TIMESTEPS="10000"
 #N_EPOCHS="301"
 SAVE_VIDEO_INTERVAL="100000000"
