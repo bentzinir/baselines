@@ -239,7 +239,7 @@ def learn(*, network, env, mca_env, total_timesteps,
                                                                                           ss=kwargs['ss']  # True
                                                                                           )
 
-    load_p = 0.5
+    load_p = 0.1
     phase_length = n_cycles * rollout_worker.T * mca_rw.rollout_batch_size * load_p
 
     mca_state_model = MetricDiversifier(k=kwargs['k'],
