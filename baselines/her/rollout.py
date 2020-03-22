@@ -206,7 +206,7 @@ class RolloutWorker:
         success_rate = np.mean(successful)
         self.success_history.append(success_rate)
 
-        mean_hit_time = np.asarray([self.T - hit if hit is not None else self.T for hit in hit_time])
+        mean_hit_time = np.asarray([self.T - hit if hit is not None else 0 for hit in hit_time])
         self.hit_time_history.append(mean_hit_time)
 
         if self.compute_Q:
