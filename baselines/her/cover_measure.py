@@ -27,7 +27,7 @@ def plot(cover_a, cover_b, log_directory):
 
     cover_plot(cover_a, color='r')
     cover_plot(cover_b, color='b')
-    plt.savefig(f"{log_directory}/cover.png")
+    plt.savefig(f"{log_directory}/lift.png")
     # plt.show()
 
 
@@ -148,7 +148,7 @@ def main(args):
     directories = os.listdir(log_directory)
     k_vec = [int(item.split('K')[-1]) for item in directories if item[0]=='K']
     k_vec.sort()
-    # k_vec = k_vec[:2]
+    k_vec = k_vec[:-2]
     # args.num_env = 2
     # venv = build_env(args, extra_args=extra_args)
     nsteps = 100
