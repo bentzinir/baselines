@@ -36,6 +36,7 @@ class RolloutWorker:
         self.info_keys = [key.replace('info_', '') for key in dims.keys() if key.startswith('info_')]
 
         self.success_history = deque(maxlen=history_len)
+        self.hit_time_history = deque(maxlen=history_len)
         self.Q_history = deque(maxlen=history_len)
 
         self.n_episodes = 0
@@ -81,12 +82,15 @@ class RolloutWorker:
 
         random_action = self.policy._random_action(num_envs)
 
-        if random:
+        reached_goal = [False] * num_envs
+
+        if self.exploit:
+            self.exploration = 'eps_greedy'
+        elif random:
             self.exploration = 'go_explore'  # 'go_explore_random'
             reached_goal = [True] * num_envs
         else:
-            self.exploration = 'eps_greedy'  # 'eps_greedy'
-            reached_goal = [False] * num_envs
+            self.exploration = 'go_explore'  # 'eps_greedy'
 
         hit_time = [None] * num_envs
 
@@ -194,10 +198,17 @@ class RolloutWorker:
             episode['info_{}'.format(key)] = value
 
         # stats
-        successful = np.array(successes)[-1, :]
+        if self.exploration == 'go_explore':
+            successful = np.asarray([1 if hit is not None else 0 for hit in hit_time])
+        else:
+            successful = np.array(successes)[-1, :]
         assert successful.shape == (self.rollout_batch_size,)
         success_rate = np.mean(successful)
         self.success_history.append(success_rate)
+
+        mean_hit_time = np.asarray([hit if hit is not None else self.T for hit in hit_time])
+        self.hit_time_history.append(mean_hit_time)
+
         if self.compute_Q:
             self.Q_history.append(np.mean(Qs))
         self.n_episodes += self.rollout_batch_size
@@ -210,12 +221,18 @@ class RolloutWorker:
         """Clears all histories that are used for statistics
         """
         self.success_history.clear()
+        self.hit_time_history.clear()
         self.Q_history.clear()
 
     def current_success_rate(self):
         if not self.active:
             return
         return np.mean(self.success_history)
+
+    def current_hit_time_rate(self):
+        if not self.active:
+            return
+        return np.mean(self.hit_time_history)
 
     def current_mean_Q(self):
         if not self.active:
@@ -237,6 +254,7 @@ class RolloutWorker:
         """
         logs = []
         logs += [('success_rate', np.mean(self.success_history))]
+        logs += [('hit_time_rate', np.mean(self.hit_time_history))]
         if self.compute_Q:
             logs += [('mean_Q', np.mean(self.Q_history))]
         logs += [('episode', self.n_episodes)]
