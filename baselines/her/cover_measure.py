@@ -13,7 +13,7 @@ import collections
 from baselines.her.metric_diversification import Bunch
 
 
-def plot(cover_a, cover_b):
+def plot(cover_a, cover_b, log_directory):
 
     fig, ax = plt.subplots(1, 1)
 
@@ -27,7 +27,8 @@ def plot(cover_a, cover_b):
 
     cover_plot(cover_a, color='r')
     cover_plot(cover_b, color='b')
-    plt.show()
+    plt.savefig(f"{log_directory}/cover.png")
+    # plt.show()
 
 
 def xy_cover(env, venv, reward_fun, nsteps, cover_x, cover_y, vis_coords):
@@ -145,7 +146,7 @@ def main(args):
 
     log_directory = extra_args["load"]
     directories = os.listdir(log_directory)
-    k_vec = [int(item.split('K')[-1]) for item in directories]
+    k_vec = [int(item.split('K')[-1]) for item in directories if item[0]=='K']
     k_vec.sort()
     # k_vec = k_vec[:2]
     # args.num_env = 2
@@ -168,7 +169,8 @@ def main(args):
         random_radius[k] = internal_radius(env, reward_fun, random_cover, nsamples=nsamples, nsteps=nsteps)
         mca_radius[k] = internal_radius(env, reward_fun, mca_cover, nsamples=nsamples, nsteps=nsteps)
     # venv.close()
-    plot(random_radius, mca_radius)
+    print(f"Done! plotting...")
+    plot(random_radius, mca_radius, log_directory)
 
 
 if __name__ == '__main__':
