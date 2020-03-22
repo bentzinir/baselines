@@ -10,13 +10,13 @@ MODE="maximum_span"
 MCA_EXPXLORATION="eps_greedy"
 MCA_ACTION_L2="0"
 SHARING="False"
-NUM_ENV="2"
+NUM_ENV="16"
 MAX_U="1"
 SS="False"
 DILUTE_AT_GOAL="True"
 
 k=0
-kmax=100
+kmax=110
 delta_k=10
 
 DATE=`date +%Y-%m-%d`
@@ -28,7 +28,7 @@ do
     #######################
     #### Learn k-Random cover
     RANDOM_COVER="True"
-    N_EPOCHS="1"
+    N_EPOCHS="11"
     LOG_PATH="${BASE_LOG_PATH}/${DATE}-${ENV}/K${k}/random"
 
     echo "          -------------------------------------------------------------------------------------
@@ -47,7 +47,7 @@ do
     #######################
     #### Learn k-MC cover
     RANDOM_COVER="False"
-    N_EPOCHS="1"
+    N_EPOCHS="501"
     LOG_PATH="${BASE_LOG_PATH}/${DATE}-${ENV}/K${k}/learned"
 
     echo "          -------------------------------------------------------------------------------------
