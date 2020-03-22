@@ -16,7 +16,7 @@ SS="False"
 DILUTE_AT_GOAL="False"
 
 k=0
-kmax=100
+kmax=110
 delta_k=10
 
 DATE=`date +%Y-%m-%d`
@@ -30,6 +30,15 @@ do
     RANDOM_COVER="True"
     N_EPOCHS="11"
     LOG_PATH="${BASE_LOG_PATH}/${DATE}-${ENV}/K${k}/random"
+
+    echo "          -------------------------------------------------------------------------------------
+          -------------------------------------------------------------------------------------
+          -------------------------------------------------------------------------------------
+          Starting new experiment. Logging directory ${LOG_PATH}
+          -------------------------------------------------------------------------------------
+          -------------------------------------------------------------------------------------
+          -------------------------------------------------------------------------------------"
+
     /home/nir/work/git/venv/gym_venv_mj150/bin/python3.6 -m baselines.run --alg=her --env=$ENV\
      --n_epochs=$N_EPOCHS --save_video_interval=$SAVE_VIDEO_INTERVAL --log_path=$LOG_PATH\
       --mode=$MODE --mca_exploration=$MCA_EXPXLORATION --mca_action_l2=$MCA_ACTION_L2 --sharing=$SHARING\
@@ -38,8 +47,17 @@ do
     #######################
     #### Learn k-MC cover
     RANDOM_COVER="False"
-    N_EPOCHS="221"
+    N_EPOCHS="501"
     LOG_PATH="${BASE_LOG_PATH}/${DATE}-${ENV}/K${k}/learned"
+
+    echo "          -------------------------------------------------------------------------------------
+          -------------------------------------------------------------------------------------
+          -------------------------------------------------------------------------------------
+          Starting new experiment. Logging directory ${LOG_PATH}
+          -------------------------------------------------------------------------------------
+          -------------------------------------------------------------------------------------
+          -------------------------------------------------------------------------------------"
+
     /home/nir/work/git/venv/gym_venv_mj150/bin/python3.6 -m baselines.run --alg=her --env=$ENV\
      --n_epochs=$N_EPOCHS --save_video_interval=$SAVE_VIDEO_INTERVAL --log_path=$LOG_PATH\
       --mode=$MODE --mca_exploration=$MCA_EXPXLORATION --mca_action_l2=$MCA_ACTION_L2 --sharing=$SHARING\
