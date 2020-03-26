@@ -89,7 +89,7 @@ class RolloutWorker:
         if self.exploit:
             self.exploration = 'eps_greedy'
         elif random:
-            self.exploration = 'go_explore'  # 'go_explore_random'
+            self.exploration = 'go_explore_random'  # 'go_explore_random'
             reached_goal = [True] * num_envs
         else:
             self.exploration = 'go_explore'  # 'eps_greedy'

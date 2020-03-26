@@ -364,7 +364,7 @@ if __name__ == '__main__':
             return 0
 
     random_cover = False
-    save_path = 'logs/2020-01-01-TwoGaussians'
+    save_path = 'logs/2020-01-01'
     if random_cover:
         save_path = f"{save_path}/random"
     else:
@@ -376,14 +376,25 @@ if __name__ == '__main__':
                                     random_cover=random_cover, save_path=save_path
                                     )
 
-    dists_prior = [0.5, 0.5]
-    counter = 0
-    while True:
+    def gaussian_mixture():
+        dists_prior = [0.5, 0.5]
         dist_idx = np.random.choice([0, 1], 1, p=dists_prior)[0]
         if dist_idx == 0:  # uniform
             x = np.random.uniform(low=0.0, high=1.0, size=2)
         elif dist_idx == 1:  # normal
             x = np.random.multivariate_normal(mean=[0.1, 0.5], cov=0.001 * np.eye(2))
+        return x
+
+    x = np.asarray([1, 1], dtype=np.float32)
+    def random_walk(x_, scale=0.01):
+        x = x_ + np.random.uniform(low=-scale, high=scale, size=2)
+        x = np.clip(x, 0, 1)
+        return x
+
+    counter = 0
+    while True:
+        # x = gaussian_mixture()
+        x = random_walk(x)
 
         pnt = uniformizer.init_record(x=x)
         uniformizer.load_new_point(pnt)
