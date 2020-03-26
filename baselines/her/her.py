@@ -55,7 +55,7 @@ def mpi_average(value):
 
 
 def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
-          save_path, demo_file, mca, random_cover=False, **kwargs):
+          save_path, demo_file, mca, random_cover=False, trainable=True, **kwargs):
     rank = MPI.COMM_WORLD.Get_rank()
 
     logger.info("Training...")
@@ -73,10 +73,12 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             # random = (n1 % random_interval) == 0
             episode = rollout_worker.generate_rollouts()
             # mca.store_ex_episode(episode)
-            mca_episode = mca.rollout_worker.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs,),
-                                                               random=random_cover)
+            mca_episode = mca.rollout_worker.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs), random=random_cover)
 
             mca.load_episode(mca_episode)
+
+            if not trainable:
+                continue
 
             episode = mca.overload_sg(episode, mca_episode)
             mca_episode = mca.overload_ss(mca_episode)
@@ -152,7 +154,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     if kwargs["mode"] == "basic":
         kwargs["mca_state_model"] = None
 
-    def prepare_agent(_env, eval_env, active, exploration='eps_greedy', action_l2=None, scope=None, ss=False):
+    def prepare_agent(_env, eval_env, active, exploration='eps_greedy', action_l2=None, scope=None, ss=False, load_path=None):
         # Prepare params.
         _params = copy.deepcopy(config.DEFAULT_PARAMS)
         _kwargs = copy.deepcopy(kwargs)
@@ -231,15 +233,21 @@ def learn(*, network, env, mca_env, total_timesteps,
     ##############################################################################
     # Maximum Coverage Agent
     mca_active = kwargs["mode"] in ["exploration_module", "maximum_span"]
+    if 'mca_load_path' in kwargs:
+        mca_load_path = kwargs['mca_load_path']
+    else:
+        mca_load_path = None
+
     mca_policy, mca_rw, mca_evaluator, mca_params, coord_dict, reward_fun = prepare_agent(mca_env, eval_env,
                                                                                           active=mca_active,
                                                                                           exploration=kwargs["mca_exploration"],
                                                                                           action_l2=kwargs["mca_action_l2"],
                                                                                           scope="mca",
-                                                                                          ss=kwargs['ss']  # True
+                                                                                          ss=kwargs['ss'],  # True
+                                                                                          load_path=mca_load_path
                                                                                           )
 
-    load_p = 0.1
+    load_p = 0.3
     phase_length = n_cycles * rollout_worker.T * mca_rw.rollout_batch_size * load_p
 
     mca_state_model = MetricDiversifier(k=kwargs['k'],
@@ -267,11 +275,17 @@ def learn(*, network, env, mca_env, total_timesteps,
     # else:
     #     random_interval = 2
 
+    if 'trainable' in kwargs:
+        trainable = kwargs['trainable']
+    else:
+        trainable = True
+
     return train(
         save_path=log_path, policy=policy, rollout_worker=rollout_worker,
         evaluator=evaluator, n_epochs=n_epochs, n_test_rollouts=params['n_test_rollouts'],
         n_cycles=params['n_cycles'], n_batches=params['n_batches'],
-        policy_save_interval=policy_save_interval, demo_file=demo_file, mca=mca, random_cover=kwargs['random_cover'])
+        policy_save_interval=policy_save_interval, demo_file=demo_file, mca=mca, random_cover=kwargs['random_cover'],
+        trainable=trainable)
 
 
 @click.command()
