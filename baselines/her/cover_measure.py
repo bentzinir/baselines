@@ -148,7 +148,7 @@ def main(args):
     directories = os.listdir(log_directory)
     k_vec = [int(item.split('K')[-1]) for item in directories if item[0]=='K']
     k_vec.sort()
-    k_vec = k_vec[:-2]
+    # k_vec = k_vec[:-2]
     # args.num_env = 2
     # venv = build_env(args, extra_args=extra_args)
     nsteps = 100

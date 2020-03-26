@@ -64,7 +64,7 @@ class MetricDiversifier:
         if random_cover:
             self.kmin = k
         else:
-            self.kmin = 5
+            self.kmin = 10
         self.k = k
         self.reward_fun = reward_fun
         self.buffer = deque(maxlen=self.k)
@@ -370,7 +370,7 @@ if __name__ == '__main__':
     else:
         save_path = f"{save_path}/learned"
 
-    uniformizer = MetricDiversifier(k=100, reward_fun=reward_fun, vis=True, load_p=1, vis_coords=[0, 1],
+    uniformizer = MetricDiversifier(k=2, reward_fun=reward_fun, vis=True, load_p=1, vis_coords=[0, 1],
                                     # load_model='/home/nir/work/git/baselines/logs/01-01-2020/mca_cover/0_model.json'
                                     prop_adjust_interval=1000,
                                     random_cover=random_cover, save_path=save_path

@@ -54,6 +54,8 @@ class RolloutWorker:
         self.initial_o = self.obs_dict['observation']
         self.initial_ag = self.obs_dict['achieved_goal']
         self.g = self.obs_dict['desired_goal']
+        if 'state_info' in self.obs_dict:
+            self.initial_state_info = self.obs_dict['state_info']
 
     def generate_rollouts(self, ex_init=None, record=False, random=False):
         """Performs `rollout_batch_size` rollouts in parallel for time horizon `T` with the current
@@ -100,6 +102,9 @@ class RolloutWorker:
         info_values = [np.empty((self.T - 1, self.rollout_batch_size, self.dims['info_' + key]), np.float32) for key in self.info_keys]
         Qs, s_infos = [], []
 
+        if hasattr(self, 'initial_state_info'):
+            state_info = self.initial_state_info
+
         for t in range(self.T):
             policy_output = self.policy.get_actions(
                 o, ag, self.g,
@@ -138,9 +143,8 @@ class RolloutWorker:
             o_new = obs_dict_new['observation']
             ag_new = obs_dict_new['achieved_goal']
             if 'state_info' in obs_dict_new:
-                s_info = obs_dict_new['state_info']
-            # else:
-            #     s_info = [[None] for _ in range(num_envs)]
+                state_info_new = obs_dict_new['state_info']
+
             success = np.array([i.get('is_success', 0.0) for i in info])
 
             reached_goal = np.logical_or(reached_goal, success)
@@ -172,11 +176,14 @@ class RolloutWorker:
             acts.append(u.copy())
             goals.append(self.g.copy())
             if 'state_info' in obs_dict_new:
-                s_infos.append(s_info)
+                s_infos.append(list(state_info))
+                state_info = state_info_new
             o[...] = o_new
             ag[...] = ag_new
         obs.append(o.copy())
         achieved_goals.append(ag.copy())
+        if 'state_info' in obs_dict_new:
+            s_infos.append(state_info)
 
         episode = dict(o=obs,
                        u=acts,
