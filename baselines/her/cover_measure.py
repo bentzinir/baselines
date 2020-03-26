@@ -67,6 +67,42 @@ def none_init():
     return {'x': None, 'info': None, 'g': None}
 
 
+def reach_time(env, reward_fun, cover, nsamples, nsteps, vis_coords=None):
+    _hit_time = [None] * nsamples
+    for ns in range(nsamples):
+        time = None
+        for k in range(len(cover)):
+            info = cover[k]['info']
+            if isinstance(info, collections.Mapping):
+                info = Bunch(info)
+            ex_init = {'x': cover[k]['x'], 'info': info, 'g': cover[k]['x_feat']}
+            o = env.reset(ex_init=ex_init)
+            k_hit = False
+            for n in range(nsteps):
+                if k_hit:
+                    break
+                if time is not None:
+                    if n >= time:
+                        break
+                for j in range(len(cover)):
+                    if j == k:
+                        continue
+                    if reward_fun(ag_2=o["achieved_goal"], g=cover[j]['x_feat'], info={}):
+                        k_hit = True
+                        time = n
+                        break
+                o, *_ = env.step(env.action_space.sample())
+        _hit_time[ns] = time
+
+    hit_time = []
+    for item in _hit_time:
+        if item is None:
+            hit_time.append(nsteps)
+        else:
+            hit_time.append(item)
+    return hit_time
+
+
 def internal_radius(env, reward_fun, cover, nsamples, nsteps, vis_coords=None):
     _hit_time = [None] * nsamples
     for ns in range(nsamples):
@@ -143,6 +179,21 @@ def main(args):
 
     def reward_fun(ag_2, g, info):  # vectorized
         return env.compute_reward(achieved_goal=ag_2, desired_goal=g, info=info)
+
+    cover_1 = MetricDiversifier.load_model("/home/nir/work/git/baselines.nir/logs/tmp/K10-random.json")
+    cover_2 = MetricDiversifier.load_model("/home/nir/work/git/baselines.nir/logs/tmp/K10-go_explore.json")
+    cover_3 = MetricDiversifier.load_model("/home/nir/work/git/baselines.nir/logs/tmp/K10-go_explore_random.json")
+
+    nsteps = 200
+    radius_1 = reach_time(env, reward_fun, cover_1, nsamples=10, nsteps=nsteps)
+    radius_2 = reach_time(env, reward_fun, cover_2, nsamples=10, nsteps=nsteps)
+    radius_3 = reach_time(env, reward_fun, cover_3, nsamples=10, nsteps=nsteps)
+
+    print(f"radius 1: {radius_1}")
+    print(f"radius 2: {radius_2}")
+    print(f"radius 3: {radius_3}")
+
+    sys.exit(0)
 
     log_directory = extra_args["load"]
     directories = os.listdir(log_directory)
