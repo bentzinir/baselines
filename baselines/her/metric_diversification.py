@@ -370,7 +370,7 @@ if __name__ == '__main__':
     else:
         save_path = f"{save_path}/learned"
 
-    uniformizer = MetricDiversifier(k=2, reward_fun=reward_fun, vis=True, load_p=1, vis_coords=[0, 1],
+    uniformizer = MetricDiversifier(k=100, reward_fun=reward_fun, vis=True, load_p=1, vis_coords=[0, 1],
                                     # load_model='/home/nir/work/git/baselines/logs/01-01-2020/mca_cover/0_model.json'
                                     prop_adjust_interval=1000,
                                     random_cover=random_cover, save_path=save_path
@@ -386,6 +386,7 @@ if __name__ == '__main__':
         return x
 
     x = np.asarray([1, 1], dtype=np.float32)
+
     def random_walk(x_, scale=0.01):
         x = x_ + np.random.uniform(low=-scale, high=scale, size=2)
         x = np.clip(x, 0, 1)
@@ -395,7 +396,6 @@ if __name__ == '__main__':
     while True:
         # x = gaussian_mixture()
         x = random_walk(x)
-
         pnt = uniformizer.init_record(x=x)
         uniformizer.load_new_point(pnt)
         counter += 1
