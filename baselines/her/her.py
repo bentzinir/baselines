@@ -65,7 +65,21 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
     n_mca_envs = mca.rollout_worker.venv.num_envs
     # num_timesteps = n_epochs * n_cycles * rollout_length * number of rollout workers
 
+    n_init_epochs = 500
+
     for epoch in range(n_epochs):
+
+        if epoch >= n_init_epochs:
+
+            if mca.state_model.current_size == 101:
+                import sys
+                sys.exit(0)
+
+            if epoch % 10 == 0:
+                mca.state_model.save(save_path, message=f"K{mca.state_model.current_size}")
+                mca.evaluator.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs), record=True, random=random_cover)
+                mca.state_model.append_new_point(mca.tmp_point)
+
         # train
         rollout_worker.clear_history()
         mca.rollout_worker.clear_history()
@@ -74,7 +88,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             episode = rollout_worker.generate_rollouts()
             # mca.store_ex_episode(episode)
             mca_episode = mca.rollout_worker.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs),
-                                                               random=random_cover or random)
+                                                               random=random_cover or random or not trainable)
 
             mca.load_episode(mca_episode)
 
@@ -103,8 +117,8 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             record = n3 == 0 and epoch % policy_save_interval == 0
             evaluator.generate_rollouts(record=record)
             mca.evaluator.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs), record=record, random=random_cover)
-            if record:
-                mca.state_model.save(save_path, message=None)
+            # if record:
+            #     mca.state_model.save(save_path, message=None)
 
         # record logs
         log(epoch, evaluator, rollout_worker, policy, rank, "policy")
@@ -200,6 +214,7 @@ def learn(*, network, env, mca_env, total_timesteps,
         policy, reward_fun = config.configure_ddpg(dims=dims, params=_params, active=active, clip_return=clip_return)
         if load_path is not None:
             tf_util.load_variables(load_path)
+            print(f"Loaded model: {load_path}")
 
         rollout_params = {
             'exploit': False,

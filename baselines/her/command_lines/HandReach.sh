@@ -16,7 +16,7 @@ SS="False"
 DILUTE_AT_GOAL="False"
 
 k=0
-kmax=110
+kmax=100
 delta_k=10
 
 DATE=`date +%Y-%m-%d`
@@ -39,7 +39,7 @@ do
           -------------------------------------------------------------------------------------
           -------------------------------------------------------------------------------------"
 
-     xvfb-run -a -s "-screen 0 1400x900x24" /home/nir/work/git/venv/gym_venv_mj150/bin/python3.6 -m baselines.run --alg=her --env=$ENV\
+     xvfb-run -a -s "-screen 0 1400x900x24" /home/ron/nir/work/git/venv/gym_venv_mj150/bin/python3.6 -m baselines.run --alg=her --env=$ENV\
      --n_epochs=$N_EPOCHS --save_video_interval=$SAVE_VIDEO_INTERVAL --log_path=$LOG_PATH\
       --mode=$MODE --mca_exploration=$MCA_EXPXLORATION --mca_action_l2=$MCA_ACTION_L2 --sharing=$SHARING\
        --num_env=$NUM_ENV --max_u=$MAX_U --ss=$SS --k=$k --random_cover=$RANDOM_COVER --dilute_at_goal=$DILUTE_AT_GOAL\
@@ -58,7 +58,7 @@ do
           -------------------------------------------------------------------------------------
           -------------------------------------------------------------------------------------"
 
-    xvfb-run -a -s "-screen 0 1400x900x24" /home/nir/work/git/venv/gym_venv_mj150/bin/python3.6 -m baselines.run --alg=her --env=$ENV\
+    xvfb-run -a -s "-screen 0 1400x900x24" /home/ron/nir/work/git/venv/gym_venv_mj150/bin/python3.6 -m baselines.run --alg=her --env=$ENV\
      --n_epochs=$N_EPOCHS --save_video_interval=$SAVE_VIDEO_INTERVAL --log_path=$LOG_PATH\
       --mode=$MODE --mca_exploration=$MCA_EXPXLORATION --mca_action_l2=$MCA_ACTION_L2 --sharing=$SHARING\
        --num_env=$NUM_ENV --max_u=$MAX_U --ss=$SS --k=$k --random_cover=$RANDOM_COVER --dilute_at_goal=$DILUTE_AT_GOAL\

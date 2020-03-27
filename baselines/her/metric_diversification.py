@@ -150,12 +150,14 @@ class MetricDiversifier:
         if new_pnt['distance'] > self.x_proposal['distance'] and not new_pnt_at_goal:
             self.x_proposal = new_pnt
 
-    def append_proposal(self, verbose=False):
-        if self.current_size < self.k and self.x_proposal['x'] is not None:
+    def append_new_point(self, new_point=None, verbose=False):
+        if new_point is None:
+            new_point = self.x_proposal
+        if self.current_size < self.k and new_point['x'] is not None:
             if verbose:
                 print(f"Appending: {self.current_size} -> {self.current_size + 1}")
             # self.fit_buffer_size(1)
-            self.buffer.append(self.x_proposal)
+            self.buffer.append(new_point)
             self.x_proposal = self.init_record()
 
     def adjust_set(self, new_pnt, distances_2_new_pnt, d_func):
@@ -196,23 +198,25 @@ class MetricDiversifier:
 
         new_pnt['distance'] = distances_2_new_pnt.min()
 
-        self.counter += 1
+        self.adjust_set(new_pnt, distances_2_new_pnt, d_func)
 
-        toggle_phase = self.counter % self.phase_length == 0
-
-        if self.current_size >= self.k:
-            self.adjust_set(new_pnt, distances_2_new_pnt, d_func)
-            if toggle_phase and self.dilute_at_goal:
-                self.dilute(verbose=True)
-        else:
-            if toggle_phase:
-                self.proposal = not self.proposal
-            if self.proposal:
-                self.update_proposal(new_pnt)
-                if toggle_phase:
-                    self.append_proposal()
-            else:
-                self.adjust_set(new_pnt, distances_2_new_pnt, d_func)
+        # self.counter += 1
+        #
+        # toggle_phase = self.counter % self.phase_length == 0
+        #
+        # if self.current_size >= self.k:
+        #     self.adjust_set(new_pnt, distances_2_new_pnt, d_func)
+        #     if toggle_phase and self.dilute_at_goal:
+        #         self.dilute(verbose=True)
+        # else:
+        #     if toggle_phase:
+        #         self.proposal = not self.proposal
+        #     if self.proposal:
+        #         self.update_proposal(new_pnt)
+        #         if toggle_phase:
+        #             self.append_new_point()
+        #     else:
+        #         self.adjust_set(new_pnt, distances_2_new_pnt, d_func)
 
     def _load_inactive(self, new_point, verbose=False):
         # load new_pnt if the buffer is empty

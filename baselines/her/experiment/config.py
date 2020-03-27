@@ -118,6 +118,7 @@ def prepare_params(kwargs):
     if 'lr' in kwargs:
         kwargs['pi_lr'] = kwargs['lr']
         kwargs['Q_lr'] = kwargs['lr']
+        print(f"Setting learning rate: {kwargs['lr']}")
         del kwargs['lr']
     for name in ['buffer_size', 'hidden', 'layers',
                  'network_class',

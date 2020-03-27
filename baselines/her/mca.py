@@ -15,6 +15,7 @@ class MCA:
         self.sharing = sharing
         self.ex_experience = None
         self.coord_dict = coord_dict
+        self.tmp_point = state_model.init_record()
         # self.n_samples = n_samples
         if vis_obs:
             self.visualizer = VisObserver()
@@ -50,6 +51,8 @@ class MCA:
             if hasattr(info, '_asdict'):
                 info = info._asdict()
             new_point = self.state_model.init_record(x=ob, x_feat=ag, info=info)
+            if self.tmp_point['x'] is None:
+                self.tmp_point = new_point
             self.state_model.load_new_point(new_point, d_func=self.policy.get_actions)
 
         if 's_info' in episode:
