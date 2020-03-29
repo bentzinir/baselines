@@ -63,7 +63,3 @@ do
        --num_env=$NUM_ENV --max_u=$MAX_U --ss=$SS --k=$k --random_cover=$RANDOM_COVER --dilute_at_goal=$DILUTE_AT_GOAL\
 
 done
-
-## Measure lift
-#/home/nir/work/git/venv/gym_venv_mj150/bin/python3.6 -m baselines.her.cover_measure --cover_a $RANDOM_PATH\
-#    --cover_b $LEARNED_PATH
