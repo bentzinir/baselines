@@ -13,6 +13,7 @@ import baselines.her.experiment.config as config
 from baselines.her.rollout import RolloutWorker
 from baselines.her.mca import MCA
 from baselines.her.metric_diversification import MetricDiversifier
+from baselines.her.cover_measure import mean_reach_time
 np.set_printoptions(precision=6)
 
 
@@ -55,7 +56,7 @@ def mpi_average(value):
 
 
 def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
-          save_path, demo_file, mca, random_cover=False, trainable=True, **kwargs):
+          save_path, demo_file, mca, random_cover=False, trainable=True, reward_func=None, tmp_env=None, **kwargs):
     rank = MPI.COMM_WORLD.Get_rank()
 
     logger.info("Training...")
@@ -65,21 +66,8 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
     n_mca_envs = mca.rollout_worker.venv.num_envs
     # num_timesteps = n_epochs * n_cycles * rollout_length * number of rollout workers
 
-    n_init_epochs = 1000
-
+    best_reach_time = 0
     for epoch in range(n_epochs):
-
-        # if epoch >= n_init_epochs:
-        #
-        #     if mca.state_model.current_size == 101:
-        #         import sys
-        #         sys.exit(0)
-        #
-        #     if epoch % 200 == 0:
-        #         mca.state_model.save(save_path, message=f"K{mca.state_model.current_size}")
-        #         mca.evaluator.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs), record=True, random=random_cover)
-        #         [mca.state_model.append_new_point(mca.tmp_point) for _ in range(10)]
-
         # train
         rollout_worker.clear_history()
         mca.rollout_worker.clear_history()
@@ -118,7 +106,12 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             evaluator.generate_rollouts(record=record)
             mca.evaluator.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs), record=record, random=random_cover)
             if record:
-                mca.state_model.save(save_path, message=None)
+                reach_time = mean_reach_time(env=tmp_env, reward_fun=reward_func, cover=mca.state_model.buffer, nsamples=10, nsteps=200)
+                current_mean_time = np.asarray(reach_time).mean()
+                if current_mean_time > best_reach_time:
+                    best_reach_time = current_mean_time
+                    mca.state_model.save(save_path, message=None)
+                    print(f"New best mean reach time: {best_reach_time}")
 
         # record logs
         log(epoch, evaluator, rollout_worker, policy, rank, "policy")
@@ -303,7 +296,7 @@ def learn(*, network, env, mca_env, total_timesteps,
         evaluator=evaluator, n_epochs=n_epochs, n_test_rollouts=params['n_test_rollouts'],
         n_cycles=params['n_cycles'], n_batches=params['n_batches'],
         policy_save_interval=policy_save_interval, demo_file=demo_file, mca=mca, random_cover=kwargs['random_cover'],
-        trainable=trainable)
+        trainable=trainable, reward_func=reward_fun, tmp_env=params['make_env']())
 
 
 @click.command()

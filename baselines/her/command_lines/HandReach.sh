@@ -27,7 +27,7 @@ do
     #######################
     #### Learn k-Random cover
     RANDOM_COVER="True"
-    N_EPOCHS="20"
+    N_EPOCHS="50"
     LOG_PATH="${BASE_LOG_PATH}/${DATE}-${ENV}/K${k}/random"
 
     echo "          -------------------------------------------------------------------------------------
