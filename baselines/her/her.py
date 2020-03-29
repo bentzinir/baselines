@@ -111,7 +111,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
                 if current_mean_time > best_reach_time:
                     best_reach_time = current_mean_time
                     mca.state_model.save(save_path, message=None)
-                    print(f"New best mean reach time: {best_reach_time}")
+                    print(f"========New best mean reach time: {best_reach_time}========")
 
         # record logs
         log(epoch, evaluator, rollout_worker, policy, rank, "policy")
@@ -130,7 +130,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         if rank != 0:
             assert local_uniform[0] != root_uniform[0]
 
-    mca.state_model.save(save_path, message=None)
+    # mca.state_model.save(save_path, message=None)
 
     return policy
 
