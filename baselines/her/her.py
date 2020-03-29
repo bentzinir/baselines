@@ -65,20 +65,20 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
     n_mca_envs = mca.rollout_worker.venv.num_envs
     # num_timesteps = n_epochs * n_cycles * rollout_length * number of rollout workers
 
-    n_init_epochs = 500
+    n_init_epochs = 1000
 
     for epoch in range(n_epochs):
 
-        if epoch >= n_init_epochs:
-
-            if mca.state_model.current_size == 101:
-                import sys
-                sys.exit(0)
-
-            if epoch % 10 == 0:
-                mca.state_model.save(save_path, message=f"K{mca.state_model.current_size}")
-                mca.evaluator.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs), record=True, random=random_cover)
-                mca.state_model.append_new_point(mca.tmp_point)
+        # if epoch >= n_init_epochs:
+        #
+        #     if mca.state_model.current_size == 101:
+        #         import sys
+        #         sys.exit(0)
+        #
+        #     if epoch % 200 == 0:
+        #         mca.state_model.save(save_path, message=f"K{mca.state_model.current_size}")
+        #         mca.evaluator.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs), record=True, random=random_cover)
+        #         [mca.state_model.append_new_point(mca.tmp_point) for _ in range(10)]
 
         # train
         rollout_worker.clear_history()
@@ -117,8 +117,8 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             record = n3 == 0 and epoch % policy_save_interval == 0
             evaluator.generate_rollouts(record=record)
             mca.evaluator.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs), record=record, random=random_cover)
-            # if record:
-            #     mca.state_model.save(save_path, message=None)
+            if record:
+                mca.state_model.save(save_path, message=None)
 
         # record logs
         log(epoch, evaluator, rollout_worker, policy, rank, "policy")
@@ -136,6 +136,8 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         MPI.COMM_WORLD.Bcast(root_uniform, root=0)
         if rank != 0:
             assert local_uniform[0] != root_uniform[0]
+
+    mca.state_model.save(save_path, message=None)
 
     return policy
 

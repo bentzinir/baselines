@@ -64,7 +64,7 @@ class MetricDiversifier:
         if random_cover:
             self.kmin = k
         else:
-            self.kmin = 10
+            self.kmin = k  # 10
         self.k = k
         self.reward_fun = reward_fun
         self.buffer = deque(maxlen=self.k)
@@ -348,6 +348,8 @@ class MetricDiversifier:
 
     @staticmethod
     def load_model(load_path):
+        if not os.path.exists(load_path):
+            return None
         with open(load_path, 'r') as infile:
             json_buffer = json.load(infile)
         buffer = deque(maxlen=len(json_buffer))

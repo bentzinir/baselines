@@ -4,31 +4,12 @@ from baselines.her.metric_diversification import MetricDiversifier
 from baselines.her.metric_diversification import VisObserver
 from baselines.common.cmd_util import common_arg_parser
 from baselines.run import parse_cmdline_kwargs
-from baselines.run import build_env
 import os, sys
 import itertools
 import numpy as np
 from matplotlib import pyplot as plt
 import collections
 from baselines.her.metric_diversification import Bunch
-
-
-def plot(cover_a, cover_b, log_directory):
-
-    fig, ax = plt.subplots(1, 1)
-
-    def cover_plot(cover, color):
-        x = list(cover.keys())
-        y = np.asarray([np.asarray(item).mean() for item in cover.values()])
-        error = np.asarray([np.asarray(item).std() for item in cover.values()])
-
-        ax.plot(x, y, f"{color}-")
-        ax.fill_between(x, y - error, y + error, facecolor=color, alpha=0.5)
-
-    cover_plot(cover_a, color='r')
-    cover_plot(cover_b, color='b')
-    plt.savefig(f"{log_directory}/lift.png")
-    # plt.show()
 
 
 def xy_cover(env, venv, reward_fun, nsteps, cover_x, cover_y, vis_coords):
@@ -67,8 +48,9 @@ def none_init():
     return {'x': None, 'info': None, 'g': None}
 
 
-def reach_time(env, reward_fun, cover, nsamples, nsteps, vis_coords=None):
+def min_reach_time(env, reward_fun, cover, nsamples, nsteps, vis_coords=None):
     _hit_time = [None] * nsamples
+    hit_pairs = [(None, None)] * nsamples
     for ns in range(nsamples):
         time = None
         for k in range(len(cover)):
@@ -90,6 +72,7 @@ def reach_time(env, reward_fun, cover, nsamples, nsteps, vis_coords=None):
                     if reward_fun(ag_2=o["achieved_goal"], g=cover[j]['x_feat'], info={}):
                         k_hit = True
                         time = n
+                        hit_pairs[ns] = (k, j)
                         break
                 o, *_ = env.step(env.action_space.sample())
         _hit_time[ns] = time
@@ -100,7 +83,7 @@ def reach_time(env, reward_fun, cover, nsamples, nsteps, vis_coords=None):
             hit_time.append(nsteps)
         else:
             hit_time.append(item)
-    return hit_time
+    return hit_time, hit_pairs
 
 
 def internal_radius(env, reward_fun, cover, nsamples, nsteps, vis_coords=None):
@@ -171,6 +154,55 @@ def _internal_radius(env, venv, reward_fun, cover, nsamples, nsteps, vis_coords=
     return hit_time
 
 
+def plot(results, log_directory):
+
+    fig, ax = plt.subplots(1, 1)
+
+    def cover_plot(cover, name):
+        x = list(cover.keys())
+        y = np.asarray([np.asarray(item).mean() for item in cover.values()])
+        error = np.asarray([np.asarray(item).std() for item in cover.values()])
+
+        # ax.plot(x, y, f"{color}-")
+        ax.plot(x, y, label=name)
+        ax.fill_between(x, y - error, y + error, alpha=0.5)
+
+    for key, val in results.items():
+        cover_plot(cover=val, name=key)
+    ax.legend()
+    plt.savefig(f"{log_directory}/lift.png")
+    # plt.show()
+
+
+def mean_reach_time(env, reward_fun, cover, nsamples, nsteps):
+    _hit_time = [None] * nsamples
+    for ns in range(nsamples):
+        hit_times = [None] * len(cover)
+        for k in range(len(cover)):
+            info = cover[k]['info']
+            if isinstance(info, collections.Mapping):
+                info = Bunch(info)
+            ex_init = {'x': cover[k]['x'], 'info': info, 'g': cover[k]['x_feat']}
+            o = env.reset(ex_init=ex_init)
+            k_hit = False
+            k_time = nsteps
+            for n in range(nsteps):
+                if k_hit:
+                    break
+                for j in range(len(cover)):
+                    if j == k:
+                        continue
+                    if reward_fun(ag_2=o["achieved_goal"], g=cover[j]['x_feat'], info={}):
+                        k_hit = True
+                        k_time = n
+                        break
+                o, *_ = env.step(env.action_space.sample())
+            hit_times[k] = k_time
+        _hit_time[ns] = np.asarray(hit_times).mean()
+
+    return _hit_time
+
+
 def main(args):
     arg_parser = common_arg_parser()
     args, unknown_args = arg_parser.parse_known_args(args)
@@ -180,48 +212,22 @@ def main(args):
     def reward_fun(ag_2, g, info):  # vectorized
         return env.compute_reward(achieved_goal=ag_2, desired_goal=g, info=info)
 
-    cover_1 = MetricDiversifier.load_model("/home/nir/work/git/baselines.nir/logs/tmp/K10-random.json")
-    cover_2 = MetricDiversifier.load_model("/home/nir/work/git/baselines.nir/logs/tmp/K10-go_explore.json")
-    cover_3 = MetricDiversifier.load_model("/home/nir/work/git/baselines.nir/logs/tmp/K10-go_explore_random.json")
-
-    nsteps = 200
-    radius_1 = reach_time(env, reward_fun, cover_1, nsamples=10, nsteps=nsteps)
-    radius_2 = reach_time(env, reward_fun, cover_2, nsamples=10, nsteps=nsteps)
-    radius_3 = reach_time(env, reward_fun, cover_3, nsamples=10, nsteps=nsteps)
-
-    print(f"radius 1: {radius_1}")
-    print(f"radius 2: {radius_2}")
-    print(f"radius 3: {radius_3}")
-
-    sys.exit(0)
-
     log_directory = extra_args["load"]
-    directories = os.listdir(log_directory)
-    k_vec = [int(item.split('K')[-1]) for item in directories if item[0]=='K']
-    k_vec.sort()
-    # k_vec = k_vec[:-2]
-    # args.num_env = 2
-    # venv = build_env(args, extra_args=extra_args)
-    nsteps = 100
+    methods = ["random", "learned"]
+    nsteps = 300
     nsamples = 20
-    random_radius = {}
-    mca_radius = {}
-
-    for k in k_vec:
-        k_dirname = os.path.join(log_directory, f"K{k}")
-
-        random_cover_fname = os.path.join(k_dirname, f"random/mca_cover/K{k}.json")
-        random_cover = MetricDiversifier.load_model(random_cover_fname)
-        mca_cover_fname = os.path.join(k_dirname, f"learned/mca_cover/K{k}.json")
-        mca_cover = MetricDiversifier.load_model(mca_cover_fname)
-        print(f"Measuring {k} lift")
-        # random_radius[k] = _internal_radius(env, venv, reward_fun, random_cover, nsamples=nsamples, nsteps=nsteps)
-        # mca_radius[k] = _internal_radius(env, venv, reward_fun, mca_cover, nsamples=nsamples, nsteps=nsteps)
-        random_radius[k] = internal_radius(env, reward_fun, random_cover, nsamples=nsamples, nsteps=nsteps)
-        mca_radius[k] = internal_radius(env, reward_fun, mca_cover, nsamples=nsamples, nsteps=nsteps)
-    # venv.close()
-    print(f"Done! plotting...")
-    plot(random_radius, mca_radius, log_directory)
+    results = {}
+    for method in methods:
+        results[method] = {}
+        for k in range(10, 120, 10):
+            fname = f"{log_directory}/K{k}/{method}/mca_cover/K{k}.json"
+            cover = MetricDiversifier.load_model(fname)
+            if cover is None:
+                continue
+            reach_time = mean_reach_time(env, reward_fun, cover, nsamples=nsamples, nsteps=nsteps)
+            results[method][k] = reach_time
+            print(f"{method}, k={k}, mean reach time = {np.asarray(reach_time).mean()}")
+    plot(results, log_directory)
 
 
 if __name__ == '__main__':
