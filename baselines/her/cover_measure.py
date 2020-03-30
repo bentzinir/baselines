@@ -48,7 +48,7 @@ def none_init():
     return {'x': None, 'info': None, 'g': None}
 
 
-def min_reach_time(env, reward_fun, cover, nsamples, nsteps, vis_coords=None):
+def min_reach_time(env, reward_fun, cover, nsamples, nsteps):
     _hit_time = [None] * nsamples
     hit_pairs = [(None, None)] * nsamples
     for ns in range(nsamples):
@@ -83,7 +83,7 @@ def min_reach_time(env, reward_fun, cover, nsamples, nsteps, vis_coords=None):
             hit_time.append(nsteps)
         else:
             hit_time.append(item)
-    return hit_time, hit_pairs
+    return np.asarray(hit_time), hit_pairs
 
 
 def internal_radius(env, reward_fun, cover, nsamples, nsteps, vis_coords=None):
@@ -200,7 +200,7 @@ def mean_reach_time(env, reward_fun, cover, nsamples, nsteps):
             hit_times[k] = k_time
         _hit_time[ns] = np.asarray(hit_times).mean()
 
-    return _hit_time
+    return np.asarray(_hit_time)
 
 
 def main(args):

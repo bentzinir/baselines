@@ -13,15 +13,9 @@ import baselines.her.experiment.config as config
 from baselines.her.rollout import RolloutWorker
 from baselines.her.mca import MCA
 from baselines.her.metric_diversification import MetricDiversifier
-from baselines.her.cover_measure import mean_reach_time
+from baselines.her.cover_measure import mean_reach_time, min_reach_time
+from baselines.common.misc_util import set_default_value
 np.set_printoptions(precision=6)
-
-
-def set_default_value(params, name, val):
-    if name in params:
-        return params[name]
-    else:
-        return val
 
 
 def save(epoch, policy, evaluator, rank, best_success_rate, save_path, save_interval, k):
@@ -63,7 +57,7 @@ def mpi_average(value):
 
 
 def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
-          save_path, demo_file, mca, random_cover=False, trainable=True, reward_func=None, tmp_env=None, **kwargs):
+          save_path, demo_file, mca, random_cover=False, trainable=True, reward_func=None, cover_measure_env=None, **kwargs):
     rank = MPI.COMM_WORLD.Get_rank()
 
     logger.info("Training...")
@@ -73,7 +67,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
     n_mca_envs = mca.rollout_worker.venv.num_envs
     # num_timesteps = n_epochs * n_cycles * rollout_length * number of rollout workers
 
-    best_reach_time = 0
+    best_reach_time = -1
     for epoch in range(n_epochs):
         # train
         rollout_worker.clear_history()
@@ -113,12 +107,15 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             evaluator.generate_rollouts(record=record)
             mca.evaluator.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs), record=record, random=random_cover)
             if record:
-                reach_time = mean_reach_time(env=tmp_env, reward_fun=reward_func, cover=mca.state_model.buffer, nsamples=10, nsteps=200)
-                current_mean_time = np.asarray(reach_time).mean()
-                if current_mean_time > best_reach_time:
-                    best_reach_time = current_mean_time
+                # reach_time = mean_reach_time(env=cover_measure_env, reward_fun=reward_func,
+                #                              cover=mca.state_model.buffer, nsamples=10, nsteps=200)
+                reach_time, _ = min_reach_time(env=cover_measure_env, reward_fun=reward_func,
+                                               cover=mca.state_model.buffer, nsamples=50, nsteps=200)
+                print(f"current reach time: {reach_time.mean()}+-{reach_time.std()}")
+                if reach_time.mean() >= best_reach_time:
+                    print(f"========New best reach time: {reach_time.mean()}========")
+                    best_reach_time = reach_time.mean()
                     mca.state_model.save(save_path, message=None)
-                    print(f"========New best mean reach time: {best_reach_time}========")
 
         # record logs
         log(epoch, evaluator, rollout_worker, policy, rank, "policy")
@@ -146,7 +143,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     seed=None,
     eval_env=None,
     replay_strategy='future',
-    policy_save_interval=50,
+    policy_save_interval=25,
     clip_return=True,
     demo_file=None,
     override_params=None,
@@ -253,13 +250,18 @@ def learn(*, network, env, mca_env, total_timesteps,
     mca_active = kwargs["mode"] in ["exploration_module", "maximum_span"]
 
     mca_load_path = set_default_value(kwargs, 'mca_load_path', None)
+    mca_exploration = set_default_value(kwargs, 'mca_exploration', 'eps_greedy')
+    mca_action_l2 = set_default_value(kwargs, 'mca_Action_l2', 0)
+    ss = set_default_value(kwargs, 'ss', False)
+    sharing = set_default_value(kwargs, 'sharing', False)
+    trainable = set_default_value(kwargs, 'trainable', True)
 
     mca_policy, mca_rw, mca_evaluator, mca_params, coord_dict, reward_fun = prepare_agent(mca_env, eval_env,
                                                                                           active=mca_active,
-                                                                                          exploration=kwargs["mca_exploration"],
-                                                                                          action_l2=kwargs["mca_action_l2"],
+                                                                                          exploration=mca_exploration,
+                                                                                          action_l2=mca_action_l2,
                                                                                           scope="mca",
-                                                                                          ss=kwargs['ss'],  # True
+                                                                                          ss=ss,
                                                                                           load_path=mca_load_path
                                                                                           )
 
@@ -278,7 +280,7 @@ def learn(*, network, env, mca_env, total_timesteps,
                                         dilute_at_goal=kwargs['dilute_at_goal'])
 
     mca = MCA(policy=mca_policy, rollout_worker=mca_rw, evaluator=mca_evaluator, state_model=mca_state_model,
-              sharing=kwargs["sharing"], coord_dict=coord_dict, ss=kwargs['ss'])
+              sharing=sharing, coord_dict=coord_dict, ss=ss)
     ##############################################################################
 
     if 'n_epochs' not in kwargs:
@@ -286,14 +288,12 @@ def learn(*, network, env, mca_env, total_timesteps,
     else:
         n_epochs = int(kwargs['n_epochs'])
 
-    trainable = set_default_value(kwargs, 'trainable', True)
-
     return train(
         save_path=log_path, policy=policy, rollout_worker=rollout_worker,
         evaluator=evaluator, n_epochs=n_epochs, n_test_rollouts=params['n_test_rollouts'],
         n_cycles=params['n_cycles'], n_batches=params['n_batches'],
         policy_save_interval=policy_save_interval, demo_file=demo_file, mca=mca, random_cover=kwargs['random_cover'],
-        trainable=trainable, reward_func=reward_fun, tmp_env=params['make_env']())
+        trainable=trainable, reward_func=reward_fun, cover_measure_env=kwargs['cover_measure_env'])
 
 
 @click.command()

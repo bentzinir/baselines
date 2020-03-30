@@ -241,3 +241,10 @@ def pickle_load(path, compression=False):
     else:
         with open(path, "rb") as f:
             return pickle.load(f)
+
+
+def set_default_value(params, name, val):
+    if name in params:
+        return params[name]
+    else:
+        return val

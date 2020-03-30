@@ -14,9 +14,7 @@ from baselines.common.cmd_util import common_arg_parser, parse_unknown_args, mak
 from baselines.common.tf_util import get_session
 from baselines import logger
 from importlib import import_module
-
-from mujoco_py import GlfwContext
-GlfwContext(offscreen=True)
+from baselines.common.misc_util import set_default_value
 
 try:
     from mpi4py import MPI
@@ -76,13 +74,11 @@ def train(args, extra_args):
     else:
         env = build_env(args, extra_args=extra_args)
 
-    if 'load_mca_path' not in alg_kwargs:
-        alg_kwargs['load_mca_path'] = None
-
+    alg_kwargs['load_mca_path'] = set_default_value(alg_kwargs, 'load_mca_path', None)
     # build overloaded env for the mca explorer
 
     mca_extra_args = copy.deepcopy(extra_args)
-    mca_extra_args["ss"] = extra_args['ss']  # True
+    mca_extra_args["ss"] = set_default_value(extra_args, 'ss', False)
     mca_env = build_env(args, extra_args=mca_extra_args)
 
     # os.path.join(save_path, time.strftime("%Y-%m-%d-%H-%M-%S"))
@@ -95,6 +91,9 @@ def train(args, extra_args):
         mca_env = VecVideoRecorder(mca_env, osp.join(logger.get_dir(), "mca_videos"),
                                record_video_trigger=lambda x: x % args.save_video_interval == 0,
                                video_length=args.save_video_length)
+
+    # create non-vectorized environment for evaluating cover distance
+    alg_kwargs['cover_measure_env'] = gym.make(env_id, distance_threshold=alg_kwargs['cover_distance_threshold'])
 
     if args.network:
         alg_kwargs['network'] = args.network
@@ -297,4 +296,8 @@ def main(args):
 
 
 if __name__ == '__main__':
+    if True:
+        from mujoco_py import GlfwContext
+        GlfwContext(offscreen=True)
+
     main(sys.argv)
