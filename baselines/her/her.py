@@ -17,6 +17,13 @@ from baselines.her.cover_measure import mean_reach_time
 np.set_printoptions(precision=6)
 
 
+def set_default_value(params, name, val):
+    if name in params:
+        return params[name]
+    else:
+        return val
+
+
 def save(epoch, policy, evaluator, rank, best_success_rate, save_path, save_interval, k):
     if evaluator.active:
         # save the policy if it's better than the previous ones
@@ -244,10 +251,8 @@ def learn(*, network, env, mca_env, total_timesteps,
     ##############################################################################
     # Maximum Coverage Agent
     mca_active = kwargs["mode"] in ["exploration_module", "maximum_span"]
-    if 'mca_load_path' in kwargs:
-        mca_load_path = kwargs['mca_load_path']
-    else:
-        mca_load_path = None
+
+    mca_load_path = set_default_value(kwargs, 'mca_load_path', None)
 
     mca_policy, mca_rw, mca_evaluator, mca_params, coord_dict, reward_fun = prepare_agent(mca_env, eval_env,
                                                                                           active=mca_active,
@@ -281,15 +286,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     else:
         n_epochs = int(kwargs['n_epochs'])
 
-    # if kwargs["random_cover"]:
-    #     random_interval = 1
-    # else:
-    #     random_interval = 2
-
-    if 'trainable' in kwargs:
-        trainable = kwargs['trainable']
-    else:
-        trainable = True
+    trainable = set_default_value(kwargs, 'trainable', True)
 
     return train(
         save_path=log_path, policy=policy, rollout_worker=rollout_worker,
