@@ -57,7 +57,8 @@ def mpi_average(value):
 
 
 def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
-          save_path, demo_file, mca, random_cover=False, trainable=True, reward_func=None, cover_measure_env=None, **kwargs):
+          save_path, demo_file, mca, random_cover=False, trainable=True, cover_measure_env=None,
+          cover_distance_th, **kwargs):
     rank = MPI.COMM_WORLD.Get_rank()
 
     logger.info("Training...")
@@ -107,13 +108,13 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             evaluator.generate_rollouts(record=record)
             mca.evaluator.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs), record=record, random=random_cover)
             if record:
-                # reach_time = mean_reach_time(env=cover_measure_env, reward_fun=reward_func,
-                #                              cover=mca.state_model.buffer, nsamples=10, nsteps=200)
-                reach_time, _ = min_reach_time(env=cover_measure_env, reward_fun=reward_func,
-                                               cover=mca.state_model.buffer, nsamples=50, nsteps=200)
-                print(f"current reach time: {reach_time.mean()}+-{reach_time.std()}")
+                # reach_time = mean_reach_time(env=cover_measure_env, cover=mca.state_model.buffer, nsamples=50,
+                #                              nsteps=200, distance_th=cover_distance_th)
+                reach_time, _ = min_reach_time(env=cover_measure_env, cover=mca.state_model.buffer, nsamples=50,
+                                               nsteps=200, distance_th=cover_distance_th)
+                print(f"current roam time: {reach_time.mean()}+-{reach_time.std()}, distance th: {cover_distance_th}")
                 if reach_time.mean() >= best_reach_time:
-                    print(f"========New best reach time: {reach_time.mean()}========")
+                    print(f"========New best roam time: {reach_time.mean()}========")
                     best_reach_time = reach_time.mean()
                     mca.state_model.save(save_path, message=None)
 
@@ -255,6 +256,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     ss = set_default_value(kwargs, 'ss', False)
     sharing = set_default_value(kwargs, 'sharing', False)
     trainable = set_default_value(kwargs, 'trainable', True)
+    cover_distance_th = set_default_value(kwargs, 'cover_distance_threshold', None)
 
     mca_policy, mca_rw, mca_evaluator, mca_params, coord_dict, reward_fun = prepare_agent(mca_env, eval_env,
                                                                                           active=mca_active,
@@ -279,8 +281,14 @@ def learn(*, network, env, mca_env, total_timesteps,
                                         phase_length=phase_length,
                                         dilute_at_goal=kwargs['dilute_at_goal'])
 
-    mca = MCA(policy=mca_policy, rollout_worker=mca_rw, evaluator=mca_evaluator, state_model=mca_state_model,
-              sharing=sharing, coord_dict=coord_dict, ss=ss)
+    mca = MCA(policy=mca_policy,
+              rollout_worker=mca_rw,
+              evaluator=mca_evaluator,
+              state_model=mca_state_model,
+              sharing=sharing,
+              coord_dict=coord_dict,
+              ss=ss
+              )
     ##############################################################################
 
     if 'n_epochs' not in kwargs:
@@ -288,12 +296,22 @@ def learn(*, network, env, mca_env, total_timesteps,
     else:
         n_epochs = int(kwargs['n_epochs'])
 
-    return train(
-        save_path=log_path, policy=policy, rollout_worker=rollout_worker,
-        evaluator=evaluator, n_epochs=n_epochs, n_test_rollouts=params['n_test_rollouts'],
-        n_cycles=params['n_cycles'], n_batches=params['n_batches'],
-        policy_save_interval=policy_save_interval, demo_file=demo_file, mca=mca, random_cover=kwargs['random_cover'],
-        trainable=trainable, reward_func=reward_fun, cover_measure_env=kwargs['cover_measure_env'])
+    return train(save_path=log_path,
+                 policy=policy,
+                 rollout_worker=rollout_worker,
+                 evaluator=evaluator,
+                 n_epochs=n_epochs,
+                 n_test_rollouts=params['n_test_rollouts'],
+                 n_cycles=params['n_cycles'],
+                 n_batches=params['n_batches'],
+                 policy_save_interval=policy_save_interval,
+                 demo_file=demo_file,
+                 mca=mca,
+                 random_cover=kwargs['random_cover'],
+                 trainable=trainable,
+                 cover_measure_env=kwargs['cover_measure_env'],
+                 cover_distance_th=cover_distance_th
+                 )
 
 
 @click.command()

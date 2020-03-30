@@ -10,6 +10,11 @@ import numpy as np
 from matplotlib import pyplot as plt
 import collections
 from baselines.her.metric_diversification import Bunch
+from baselines.common.misc_util import set_default_value
+
+
+def reward_fun(env, ag_2, g, info, dist_th):  # vectorized
+    return env.compute_reward(achieved_goal=ag_2, desired_goal=g, info=info, distance_threshold=dist_th)
 
 
 def xy_cover(env, venv, reward_fun, nsteps, cover_x, cover_y, vis_coords):
@@ -48,45 +53,7 @@ def none_init():
     return {'x': None, 'info': None, 'g': None}
 
 
-def min_reach_time(env, reward_fun, cover, nsamples, nsteps):
-    _hit_time = [None] * nsamples
-    hit_pairs = [(None, None)] * nsamples
-    for ns in range(nsamples):
-        time = None
-        for k in range(len(cover)):
-            info = cover[k]['info']
-            if isinstance(info, collections.Mapping):
-                info = Bunch(info)
-            ex_init = {'x': cover[k]['x'], 'info': info, 'g': cover[k]['x_feat']}
-            o = env.reset(ex_init=ex_init)
-            k_hit = False
-            for n in range(nsteps):
-                if k_hit:
-                    break
-                if time is not None:
-                    if n >= time:
-                        break
-                for j in range(len(cover)):
-                    if j == k:
-                        continue
-                    if reward_fun(ag_2=o["achieved_goal"], g=cover[j]['x_feat'], info={}):
-                        k_hit = True
-                        time = n
-                        hit_pairs[ns] = (k, j)
-                        break
-                o, *_ = env.step(env.action_space.sample())
-        _hit_time[ns] = time
-
-    hit_time = []
-    for item in _hit_time:
-        if item is None:
-            hit_time.append(nsteps)
-        else:
-            hit_time.append(item)
-    return np.asarray(hit_time), hit_pairs
-
-
-def internal_radius(env, reward_fun, cover, nsamples, nsteps, vis_coords=None):
+def internal_radius(env, cover, nsamples, nsteps, vis_coords=None):
     _hit_time = [None] * nsamples
     for ns in range(nsamples):
         taus = [[] for _ in range(len(cover))]
@@ -106,7 +73,7 @@ def internal_radius(env, reward_fun, cover, nsamples, nsteps, vis_coords=None):
                 break
             a_goals_t = [tau[t] for tau in taus]
             for pair in itertools.combinations(a_goals_t, 2):
-                if reward_fun(ag_2=pair[0], g=pair[1], info={}):
+                if reward_fun(env, ag_2=pair[0], g=pair[1], info={}):
                     _hit_time[ns] = t
                     hit = True
                     break
@@ -174,7 +141,45 @@ def plot(results, log_directory):
     # plt.show()
 
 
-def mean_reach_time(env, reward_fun, cover, nsamples, nsteps):
+def min_reach_time(env, cover, nsamples, nsteps, distance_th):
+    _hit_time = [None] * nsamples
+    hit_pairs = [(None, None)] * nsamples
+    for ns in range(nsamples):
+        time = None
+        for k in range(len(cover)):
+            info = cover[k]['info']
+            if isinstance(info, collections.Mapping):
+                info = Bunch(info)
+            ex_init = {'x': cover[k]['x'], 'info': info, 'g': cover[k]['x_feat']}
+            o = env.reset(ex_init=ex_init)
+            k_hit = False
+            for n in range(nsteps):
+                if k_hit:
+                    break
+                if time is not None:
+                    if n >= time:
+                        break
+                for j in range(len(cover)):
+                    if j == k:
+                        continue
+                    if reward_fun(env, ag_2=o["achieved_goal"], g=cover[j]['x_feat'], info={}, dist_th=distance_th):
+                        time = n
+                        k_hit = True
+                        hit_pairs[ns] = (k, j)
+                        break
+                o, *_ = env.step(env.action_space.sample())
+        _hit_time[ns] = time
+
+    hit_time = []
+    for item in _hit_time:
+        if item is None:
+            hit_time.append(nsteps)
+        else:
+            hit_time.append(item)
+    return np.asarray(hit_time), hit_pairs
+
+
+def mean_reach_time(env, cover, nsamples, nsteps, distance_th):
     _hit_time = [None] * nsamples
     for ns in range(nsamples):
         hit_times = [None] * len(cover)
@@ -192,7 +197,7 @@ def mean_reach_time(env, reward_fun, cover, nsamples, nsteps):
                 for j in range(len(cover)):
                     if j == k:
                         continue
-                    if reward_fun(ag_2=o["achieved_goal"], g=cover[j]['x_feat'], info={}):
+                    if reward_fun(env, ag_2=o["achieved_goal"], g=cover[j]['x_feat'], info={}, dist_th=distance_th):
                         k_hit = True
                         k_time = n
                         break
@@ -209,13 +214,13 @@ def main(args):
     extra_args = parse_cmdline_kwargs(unknown_args)
     env = gym.make(args.env, **extra_args)
 
-    def reward_fun(ag_2, g, info):  # vectorized
-        return env.compute_reward(achieved_goal=ag_2, desired_goal=g, info=info)
 
     log_directory = extra_args["load"]
     methods = ["random", "learned"]
     nsteps = 300
     nsamples = 20
+    distance_th = set_default_value(extra_args, 'cover_distance_threshold', None)
+
     results = {}
     for method in methods:
         results[method] = {}
@@ -224,7 +229,7 @@ def main(args):
             cover = MetricDiversifier.load_model(fname)
             if cover is None:
                 continue
-            reach_time = mean_reach_time(env, reward_fun, cover, nsamples=nsamples, nsteps=nsteps)
+            reach_time = mean_reach_time(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
             results[method][k] = reach_time
             print(f"{method}, k={k}, mean reach time = {np.asarray(reach_time).mean()}")
     plot(results, log_directory)
