@@ -64,8 +64,9 @@ class MetricDiversifier:
         if random_cover:
             self.kmin = k
         else:
-            self.kmin = 5
+            self.kmin = k
         self.k = k
+        self.M = -np.inf * np.ones((self.k, self.k))
         self.reward_fun = reward_fun
         self.buffer = deque(maxlen=self.k)
         self.proposal = False
@@ -108,20 +109,19 @@ class MetricDiversifier:
         return z
 
     @staticmethod
-    def set_to_point_distance(set_pts, x, d_func=None):
+    def quasimetric(a, b, d_func=None):
         '''
-        :param set_pts: a set of points
-        :param x: new point
+        :param a: set of points
+        :param b: set of points
         :param d_func: a quasimetric distance function
         :return: the point in the set that is closest to x
         '''
         if d_func is None:
-            distances_2_x = np.linalg.norm(x - set_pts, ord=2, axis=1)
+            a2b_distance = np.linalg.norm(a - b, ord=2, axis=1)
         else:
-            x_mat = np.repeat(np.expand_dims(x, 0), repeats=set_pts.shape[0], axis=0)
-            _, Q = d_func(o=set_pts, ag=None, g=x_mat, compute_Q=True)
-            distances_2_x = - Q.squeeze()
-        return distances_2_x
+            _, Q = d_func(o=a, ag=None, g=b, compute_Q=True)
+            a2b_distance = - Q.squeeze()
+        return a2b_distance
 
     def _set_distance(self, d_func):
         '''
@@ -130,11 +130,11 @@ class MetricDiversifier:
         :return: a member of idxs that is most reachable by any other point
         '''
 
-        set_idxs = list(range(self.current_size))
+        all_idxs = list(range(self.current_size))
         for idx in range(self.current_size):
             p = self.buffer[idx]['x_feat']
-            _X = self._buffer_2_array(val='x', idxs=set_idxs)
-            distance_to_p = self.set_to_point_distance(_X, p, d_func=d_func)
+            _X = self._buffer_2_array(val='x', idxs=all_idxs)
+            distance_to_p = self.quasimetric(_X, p, d_func=d_func)
             distance_to_p[idx] = np.inf
             self.buffer[idx]['distance'] = distance_to_p.min()
             self.buffer[idx]['nn'] = distance_to_p.argmin()
@@ -160,27 +160,43 @@ class MetricDiversifier:
             self.buffer.append(new_point)
             self.x_proposal = self.init_record()
 
-    def adjust_set(self, new_pnt, distances_2_new_pnt, d_func):
-        # Calculate pairwise distances
-        self._set_distance(d_func)
+    def adjust_set(self, new_pnt, d_func):
+
+        ref_idx_set = np.random.choice(list(range(self.current_size)), 10, replace=False)
+
+        set_x_mat = self._buffer_2_array(val='x', idxs=list(range(self.current_size)))
+
+        newpnt_feat_mat = np.repeat(np.expand_dims(new_pnt['x_feat'], 0), repeats=self.current_size, axis=0)
+
+        distances_to_new_pnt = self.quasimetric(a=set_x_mat, b=newpnt_feat_mat, d_func=d_func)
 
         ##################################
         b_idx = -1
         b_delta = -np.inf
-        for j in range(self.current_size):
-            j_distances = distances_2_new_pnt.copy()
+        for j in ref_idx_set:
+            j_distances = distances_to_new_pnt.copy()
             j_distances[j] = np.inf
-            delta_j = j_distances.min() - self.buffer[j]['distance']
+            delta_j = j_distances.min() - self.M[:, j].min()
             if delta_j > b_delta and delta_j > 0:
                 b_delta = delta_j
                 b_idx = j
         ##################################
 
         if b_idx >= 0:
-            # pop
-            del self.buffer[b_idx]
-            # append
-            self.buffer.append(new_pnt)
+
+            # update pairwise distance matrix
+            newpnt_x_mat = np.repeat(np.expand_dims(new_pnt['x'], 0), repeats=self.current_size, axis=0)
+
+            set_feat_mat = self._buffer_2_array(val='x_feat', idxs=list(range(self.current_size)))
+
+            self.M[b_idx] = self.quasimetric(a=newpnt_x_mat, b=set_feat_mat, d_func=d_func)
+
+            self.M[:, b_idx] = distances_to_new_pnt
+
+            self.M[b_idx, b_idx] = np.inf
+
+            # replace in buffer
+            self.buffer[b_idx] = new_pnt
 
     def _load_active(self, new_pnt, d_func):
         # load new_pnt if the buffer is empty
@@ -191,14 +207,7 @@ class MetricDiversifier:
         if not np.random.binomial(n=1, p=self.load_p):
             return
 
-        # calculate the distance of new_pnt to all points
-        X = self._buffer_2_array(val='x', idxs=list(range(self.current_size)))
-
-        distances_2_new_pnt = self.set_to_point_distance(X, new_pnt['x_feat'], d_func=d_func)
-
-        new_pnt['distance'] = distances_2_new_pnt.min()
-
-        self.adjust_set(new_pnt, distances_2_new_pnt, d_func)
+        self.adjust_set(new_pnt, d_func)
 
         # self.counter += 1
         #
@@ -375,7 +384,7 @@ if __name__ == '__main__':
     else:
         save_path = f"{save_path}/learned"
 
-    uniformizer = MetricDiversifier(k=100, reward_fun=reward_fun, vis=True, load_p=1, vis_coords=[0, 1],
+    uniformizer = MetricDiversifier(k=1000, reward_fun=reward_fun, vis=True, load_p=1, vis_coords=[0, 1],
                                     # load_model='/home/nir/work/git/baselines/logs/01-01-2020/mca_cover/0_model.json'
                                     prop_adjust_interval=1000,
                                     random_cover=random_cover, save_path=save_path
