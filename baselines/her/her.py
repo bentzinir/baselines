@@ -69,14 +69,14 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
     n_mca_envs = mca.rollout_worker.venv.num_envs
     # num_timesteps = n_epochs * n_cycles * rollout_length * number of rollout workers
 
-    n_init_epochs = 1
+    n_init_epochs = 1000
     success_append_th = 0.9
 
     for epoch in range(n_epochs):
 
         if epoch >= n_init_epochs:
 
-            if mca.state_model.current_size == 101:
+            if mca.state_model.current_size == 301:
                 import sys
                 sys.exit(0)
 
@@ -285,7 +285,7 @@ def learn(*, network, env, mca_env, total_timesteps,
                                                                                           load_path=mca_load_path
                                                                                           )
 
-    load_p = 0.3
+    load_p = 1
     phase_length = n_cycles * rollout_worker.T * mca_rw.rollout_batch_size * load_p
 
     mca_state_model = MetricDiversifier(k=kwargs['k'],
