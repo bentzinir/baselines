@@ -93,7 +93,7 @@ def train(args, extra_args):
                                video_length=args.save_video_length)
 
     # create non-vectorized environment for evaluating cover distance
-    alg_kwargs['cover_measure_env'] = gym.make(env_id, distance_threshold=alg_kwargs['cover_distance_threshold'])
+    # alg_kwargs['cover_measure_env'] = gym.make(env_id, distance_threshold=alg_kwargs['cover_distance_threshold'])
 
     if args.network:
         alg_kwargs['network'] = args.network
@@ -267,6 +267,7 @@ def main(args):
         obs = env.reset()
 
         state = model.initial_state if hasattr(model, 'initial_state') else None
+
         dones = np.zeros((1,))
 
         episode_rew = np.zeros(env.num_envs) if isinstance(env, VecEnv) else np.zeros(1)

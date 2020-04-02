@@ -22,7 +22,7 @@ DEFAULT_ENV_PARAMS = {
         'n_cycles': 10,
     },
     'HandReach20-v0': {
-        'n_cycles': 10,
+        'n_cycles': 50,
     },
 }
 

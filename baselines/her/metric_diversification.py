@@ -64,7 +64,7 @@ class MetricDiversifier:
         if random_cover:
             self.kmin = k
         else:
-            self.kmin = k  # 10
+            self.kmin = 5
         self.k = k
         self.reward_fun = reward_fun
         self.buffer = deque(maxlen=self.k)
@@ -335,12 +335,11 @@ class MetricDiversifier:
         return {'x': x, 'x_feat': x_feat, 'c': 0, 'info': info, 'distance': distance, 'nn': None}
 
     def save_model(self, save_path, message=None):
-        save_dir = os.path.join(save_path, "mca_cover")
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
         if message is None:
             message = 'cover'
-        f_name = f"{save_dir}/{message}.json"
+        f_name = f"{save_path}/{message}.json"
         with open(f_name, 'w') as outfile:
             json_str = json.dumps(self._buffer_2_dict(), indent=4, sort_keys=True)
             outfile.write(json_str)

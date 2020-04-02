@@ -131,8 +131,6 @@ class DDPG(object):
         actions = self.get_actions(obs['observation'], obs['achieved_goal'], obs['desired_goal'])
         return actions, None, None, None
 
-
-
     def get_actions(self, o, ag, g, noise_eps=0., random_eps=0., use_target_net=False, compute_Q=False,
                     exploration='eps_greedy', **kwargs):
         o, g = self._preprocess_og(o, ag, g)
@@ -160,44 +158,18 @@ class DDPG(object):
                 u = u[0]
             u = u.copy()
             ret[0] = u
-        elif exploration == "go_explore":
-            for idx, go in enumerate(kwargs["go"]):
-                if go:
-                    ...
-                else:  # explore
-                    # TODO: remove action scaling after debug
-                    w = 1
-                    ret[0][idx] = w * self._random_action(1)[0]
-        elif exploration in ["go_explore_random", "go_explore_brownian"]:
-            for idx, go in enumerate(kwargs["go"]):
-                if go:
-                    ...
-                else:  # explore
-                    ret[0][idx] = kwargs['random_action'][idx]
-        elif exploration == 'go_explore_Q':
-            for idx, go in enumerate(kwargs["go"]):
-                if go:
-                    ...
-                else:  # downhill Q exploration
-                    hit_time = kwargs["hit_time"][idx]
-                    t = kwargs["t"]
-                    T = kwargs["T"]
-                    if hit_time is not None:
-                        if t > hit_time + 2:
-                            acts = np.asarray(kwargs["acts"])[hit_time:, idx]
-                            root_Qs = np.asarray(kwargs["root_Qs"])[hit_time:, idx]
-                            weights = root_Qs[:-1] - root_Qs[1:]
-                            scaled_weights = 1/(weights.max() - weights.min())*(weights-weights.min())
-                            scaled_weights = np.concatenate(([[0]], scaled_weights), axis=0)
-                            greedy_action = np.sum(acts * scaled_weights, axis=0)
-                            # choose greedy action with higher probability at the end of the episode
-                            if np.random.binomial(n=1, p=t/T):
-                                ret[0][idx] = greedy_action
-                            else:
-                                ret[0][idx] = self._random_action(1)[0]
-                    else:
-                        ret[0][idx] = self._random_action(1)[0]
-
+        elif exploration == "go":
+            ...
+        # elif exploration == "go_explore":
+        #     for idx, go in enumerate(kwargs["go"]):
+        #         if go:
+        #             ...
+        #         else:  # explore
+        #             ret[0][idx] = self._random_action(1)[0]
+        elif exploration == "fixed_random":
+            ret[0] = kwargs['random_action']
+        elif exploration == "random":
+            ret[0] = self._random_action(u.shape[0])
         else:
             raise ValueError
 

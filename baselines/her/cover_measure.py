@@ -214,9 +214,9 @@ def main(args):
     extra_args = parse_cmdline_kwargs(unknown_args)
     env = gym.make(args.env, **extra_args)
 
-
     log_directory = extra_args["load"]
-    methods = ["random", "learned"]
+    # methods = ["random", "learned"]
+    methods = [""]
     nsteps = 300
     nsamples = 20
     distance_th = set_default_value(extra_args, 'cover_distance_threshold', None)
@@ -224,8 +224,9 @@ def main(args):
     results = {}
     for method in methods:
         results[method] = {}
-        for k in range(10, 120, 10):
-            fname = f"{log_directory}/K{k}/{method}/mca_cover/K{k}.json"
+        for k in range(0, 120, 1):
+            # fname = f"{log_directory}/K{k}/{method}/mca_cover/K{k}.json"
+            fname = f"{log_directory}/K{k}.json"
             cover = MetricDiversifier.load_model(fname)
             if cover is None:
                 continue
