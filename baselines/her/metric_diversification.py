@@ -67,6 +67,7 @@ class MetricDiversifier:
             self.kmin = k
         self.k = k
         self.M = -np.inf * np.ones((self.k, self.k))
+        self.age = np.zeros(self.k)
         self.reward_fun = reward_fun
         self.buffer = deque(maxlen=self.k)
         self.proposal = False
@@ -119,7 +120,7 @@ class MetricDiversifier:
         if d_func is None:
             a2b_distance = np.linalg.norm(a - b, ord=2, axis=1)
         else:
-            _, Q = d_func(o=a, ag=None, g=b, compute_Q=True)
+            _, Q = d_func(o=a, ag=None, g=b, compute_Q=True, use_target_net=True)
             a2b_distance = - Q.squeeze()
         return a2b_distance
 
@@ -162,7 +163,17 @@ class MetricDiversifier:
 
     def adjust_set(self, new_pnt, d_func):
 
+        self.age += 1
+
         ref_idx_set = np.random.choice(list(range(self.current_size)), 10, replace=False)
+
+        # refresh outdated matrix entries
+        for idx in ref_idx_set:
+            if self.age[idx] > 1000:
+                # print(f'Updating: {idx, self.age[idx]}')
+                self.update_to(idx, d_func)
+                self.update_from(idx, d_func)
+                self.age[idx] = 0
 
         set_x_mat = self._buffer_2_array(val='x', idxs=list(range(self.current_size)))
 
@@ -197,6 +208,20 @@ class MetricDiversifier:
 
             # replace in buffer
             self.buffer[b_idx] = new_pnt
+
+    def update_from(self, j, d_func):
+        pnt = self.buffer[j]
+        pnt_x_mat = np.repeat(np.expand_dims(pnt['x'], 0), repeats=self.current_size, axis=0)
+        set_feat_mat = self._buffer_2_array(val='x_feat', idxs=list(range(self.current_size)))
+        self.M[j] = self.quasimetric(a=pnt_x_mat, b=set_feat_mat, d_func=d_func)
+        self.M[j, j] = np.inf
+
+    def update_to(self, j, d_func):
+        pnt = self.buffer[j]
+        pnt_feat_mat = np.repeat(np.expand_dims(pnt['x_feat'], 0), repeats=self.current_size, axis=0)
+        set_x_mat = self._buffer_2_array(val='x', idxs=list(range(self.current_size)))
+        self.M[:, j] = self.quasimetric(a=set_x_mat, b=pnt_feat_mat, d_func=d_func)
+        self.M[j, j] = np.inf
 
     def _load_active(self, new_pnt, d_func):
         # load new_pnt if the buffer is empty

@@ -88,6 +88,7 @@ class DDPG(object):
         for key in ['o', 'g']:
             stage_shapes[key + '_2'] = stage_shapes[key]
         stage_shapes['r'] = (None,)
+        # stage_shapes['hit_time'] = (None,)
         self.stage_shapes = stage_shapes
 
         # Create network.
@@ -358,6 +359,7 @@ class DDPG(object):
         batch_tf = OrderedDict([(key, batch[i])
                                 for i, key in enumerate(self.stage_shapes.keys())])
         batch_tf['r'] = tf.reshape(batch_tf['r'], [-1, 1])
+        # batch_tf['hit_time'] = tf.reshape(batch_tf['hit_time'], [-1, 1])
 
         #choose only the demo buffer samples
         mask = np.concatenate((np.zeros(self.batch_size - self.demo_batch_size), np.ones(self.demo_batch_size)), axis = 0)
@@ -385,6 +387,8 @@ class DDPG(object):
         target_tf = tf.clip_by_value(batch_tf['r'] + self.gamma * target_Q_pi_tf, *clip_range)
         self.Q_loss_tf = tf.reduce_mean(tf.square(tf.stop_gradient(target_tf) - self.main.Q_tf))
 
+        # self.T_loss_tf = tf.reduce_mean(tf.square(batch_tf['hit_time'] - self.main.T_tf))
+
         if self.bc_loss ==1 and self.q_filter == 1 : # train with demonstrations and use bc_loss and q_filter both
             maskMain = tf.reshape(tf.boolean_mask(self.main.Q_tf > self.main.Q_pi_tf, mask), [-1]) #where is the demonstrator action better than actor action according to the critic? choose those samples only
             #define the cloning loss on the actor's actions only on the samples which adhere to the above masks
@@ -404,6 +408,8 @@ class DDPG(object):
             self.pi_loss_tf += self.action_l2 * tf.reduce_mean(tf.square(self.main.pi_tf / self.max_u))
 
         Q_grads_tf = tf.gradients(self.Q_loss_tf, self._vars('main/Q'))
+        # Q_grads_tf = tf.gradients(self.Q_loss_tf+self.T_loss_tf, self._vars('main/Q'))
+
         pi_grads_tf = tf.gradients(self.pi_loss_tf, self._vars('main/pi'))
         assert len(self._vars('main/Q')) == len(Q_grads_tf)
         assert len(self._vars('main/pi')) == len(pi_grads_tf)

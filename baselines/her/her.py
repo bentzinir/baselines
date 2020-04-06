@@ -29,10 +29,11 @@ def save(epoch, policy, evaluator, mca, rank, best_success_rate, save_path, save
             best_success_rate = success_rate
             save_message = f'(new best, rate: {best_success_rate:.2f}, best path: {model_path}, cover size: {k})'
             policy.save(model_path, message=save_message)
-            mca.state_model.save(os.path.join(save_path, "mca_cover"), message=None)
+            mca.state_model.save(os.path.join(save_path, "mca_cover"), message=f"best_model")
         if rank == 0 and save_interval > 0 and epoch % save_interval == 0 and save_path:
             save_message = f'(periodic, current best:{best_success_rate:.2f}, cover size: {k})'
             policy.save(model_path, message=save_message)
+            mca.state_model.save(os.path.join(save_path, "mca_cover"), message=f"epoch_{epoch}")
     return best_success_rate
 
 
@@ -69,24 +70,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
     n_mca_envs = mca.rollout_worker.venv.num_envs
     # num_timesteps = n_epochs * n_cycles * rollout_length * number of rollout workers
 
-    n_init_epochs = 1000
-    success_append_th = 0.9
-
     for epoch in range(n_epochs):
-
-        if epoch >= n_init_epochs:
-
-            if mca.state_model.current_size == 301:
-                import sys
-                sys.exit(0)
-
-            mca_success_rate = mpi_average(mca.evaluator.current_success_rate())
-            if epoch % 10 == 0 and mca_success_rate > success_append_th:
-                print(f"Appending!, success rate: {mca_success_rate}, current size: {mca.state_model.current_size}")
-
-                mca.state_model.save(os.path.join(save_path, "mca_cover"), message=f"K{mca.state_model.current_size}")
-                mca.evaluator.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs), record=True, random=random_cover)
-                [mca.state_model.append_new_point(mca.tmp_point) for _ in range(1)]
 
         # train
         rollout_worker.clear_history()
@@ -125,17 +109,6 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             record = n3 == 0 and epoch % policy_save_interval == 0
             evaluator.generate_rollouts(record=record)
             mca.evaluator.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs), record=record, random=random_cover)
-            # if record:
-                # # reach_time = mean_reach_time(env=cover_measure_env, cover=mca.state_model.buffer, nsamples=50,
-                # #                              nsteps=200, distance_th=cover_distance_th)
-                # reach_time, _ = min_reach_time(env=cover_measure_env, cover=mca.state_model.buffer, nsamples=50,
-                #                                nsteps=200, distance_th=cover_distance_th)
-                # print(f"current roam time: {reach_time.mean()}+-{reach_time.std()}, distance th: {cover_distance_th}")
-                # if reach_time.mean() >= best_reach_time:
-                #     print(f"========New best roam time: {reach_time.mean()}========")
-                #     best_reach_time = reach_time.mean()
-                #     mca.state_model.save(save_path, message=None)
-                # mca.state_model.save(save_path, message=None)
 
         # record logs
         log(epoch, evaluator, rollout_worker, policy, rank, "policy")
@@ -162,7 +135,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     seed=None,
     eval_env=None,
     replay_strategy='future',
-    policy_save_interval=50,
+    policy_save_interval=20,
     clip_return=True,
     demo_file=None,
     override_params=None,

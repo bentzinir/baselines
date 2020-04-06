@@ -80,7 +80,7 @@ class RolloutWorker:
         else:
             self.exploration = 'eps_greedy'  # 'go'
 
-        hit_time = [-1] * num_envs
+        hit_time = [self.T] * num_envs
 
         # generate episodes
         obs, achieved_goals, acts, goals, successes = [], [], [], [], []
@@ -122,7 +122,7 @@ class RolloutWorker:
             success = np.array([i.get('is_success', 0.0) for i in info])
 
             for e_idx, (suc, ht) in enumerate(zip(success, hit_time)):
-                if suc and hit_time[e_idx] == -1:
+                if suc and hit_time[e_idx] == self.T:
                     hit_time[e_idx] = t
 
             if any(done):
