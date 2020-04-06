@@ -172,7 +172,7 @@ def main(args):
     log_directory = extra_args["load"]
     # methods = ["random", "learned"]
     methods = [""]
-    nsteps = 50
+    nsteps = 100
     nsamples = 5
     distance_th = set_default_value(extra_args, 'cover_distance_threshold', None)
 
