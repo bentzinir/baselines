@@ -60,6 +60,8 @@ def train(args, extra_args):
     total_timesteps = int(args.num_timesteps)
     seed = args.seed
 
+    extra_args['mode'] = set_default_value(extra_args, 'mode', 'maximum_span')
+
     learn = get_learn_function(args.alg)
     alg_kwargs = get_learn_function_defaults(args.alg, env_type)
     alg_kwargs.update(extra_args)
@@ -273,7 +275,7 @@ def main(args):
         episode_rew = np.zeros(env.num_envs) if isinstance(env, VecEnv) else np.zeros(1)
         while True:
             if state is not None:
-                actions, _, state, _ = model.step(obs,S=state, M=dones)
+                actions, _, state, _ = model.step(obs, S=state, M=dones)
             else:
                 actions, _, _, _ = model.step(obs)
             if isinstance(actions, list):
@@ -289,8 +291,6 @@ def main(args):
             if done:
                 print('episode_rew={}'.format(episode_rew))
                 episode_rew = 0
-                t = 0
-
     env.close()
 
     return model
