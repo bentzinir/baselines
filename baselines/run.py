@@ -2,7 +2,7 @@ import sys
 import re
 import multiprocessing
 import os.path as osp
-import gym, gym_maze
+import gym #, gym_maze
 from collections import defaultdict
 import tensorflow as tf
 import numpy as np
