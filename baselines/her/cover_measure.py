@@ -40,9 +40,32 @@ def plot(results, log_directory):
     # plt.show()
 
 
+def xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, sample_size=15):
+    sample_set = np.random.choice(list(range(len(cover_x))), sample_size, replace=False)
+    hits = []
+    for idx in sample_set:
+        info = cover_x[idx]['info']
+        if isinstance(info, collections.Mapping):
+            info = Bunch(info)
+        ex_init = {'x': cover_x[idx]['x'], 'info': info, 'g': cover_x[idx]['x_feat']}
+        o = env.reset(ex_init=ex_init)
+        hit = False
+        for n in range(nsteps):
+            if hit:
+                break
+            for j in range(len(cover_y)):
+                if self_cover and j == idx:
+                    continue
+                if reward_fun(env, ag_2=o["achieved_goal"], g=cover_y[j]['x_feat'], info={}, dist_th=distance_th):
+                    hit = True
+                    break
+            o, *_ = env.step(env.action_space.sample())
+        hits.append(hit)
+    return np.asarray(hits).astype(np.float32).mean()
+
+
 def xy_cover(env, cover_x, nsamples, nsteps, distance_th, cover_y=None):
-    sample_size = 10
-    _hit_time = []
+    hits_array = []
     if cover_y is None:
         cover_y = cover_x
         self_cover = True
@@ -50,31 +73,9 @@ def xy_cover(env, cover_x, nsamples, nsteps, distance_th, cover_y=None):
         self_cover = False
 
     for ns in range(nsamples):
-        hit_times = [None] * sample_size
-        sample_set = np.random.choice(list(range(len(cover_x))), sample_size, replace=False)
-        for i, k in enumerate(sample_set):
-            info = cover_x[k]['info']
-            if isinstance(info, collections.Mapping):
-                info = Bunch(info)
-            ex_init = {'x': cover_x[k]['x'], 'info': info, 'g': cover_x[k]['x_feat']}
-            o = env.reset(ex_init=ex_init)
-            k_hit = False
-            k_time = nsteps
-            for n in range(nsteps):
-                if k_hit:
-                    break
-                for j in range(len(cover_y)):
-                    if self_cover and j == k:
-                        continue
-                    if reward_fun(env, ag_2=o["achieved_goal"], g=cover_y[j]['x_feat'], info={}, dist_th=distance_th):
-                        k_hit = True
-                        k_time = n
-                        break
-                o, *_ = env.step(env.action_space.sample())
-            hit_times[i] = k_time
-        _hit_time.append(np.asarray(hit_times).mean())
+        hits_array.append(xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, sample_size=15))
 
-    return np.asarray(_hit_time)
+    return np.asarray(hits_array).mean()
 
 
 def min_reach_time(env, cover, nsamples, nsteps, distance_th):
@@ -172,7 +173,7 @@ def main(args):
     # methods = ["random", "learned"]
     methods = [""]
     nsteps = 50
-    nsamples = 50
+    nsamples = 5
     distance_th = set_default_value(extra_args, 'cover_distance_threshold', None)
 
     results = {}
