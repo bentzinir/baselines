@@ -75,12 +75,13 @@ class RolloutWorker:
 
         random_action = self.policy._random_action(num_envs)
 
+        reached_goal = [False] * num_envs
+        hit_time = [None] * num_envs
+
         if random:
             self.exploration = 'fixed_random'
         else:
-            self.exploration = 'eps_greedy'  # 'go'
-
-        hit_time = [self.T] * num_envs
+            self.exploration = 'go_explore'  # 'go'
 
         # generate episodes
         obs, achieved_goals, acts, goals, successes = [], [], [], [], []
@@ -99,6 +100,7 @@ class RolloutWorker:
                 random_eps=self.random_eps if not self.exploit else 0.,
                 use_target_net=self.use_target_net,
                 exploration=self.exploration,
+                go=np.logical_not(reached_goal),
                 random_action=random_action,
             )
 
@@ -122,8 +124,10 @@ class RolloutWorker:
             success = np.array([i.get('is_success', 0.0) for i in info])
 
             for e_idx, (suc, ht) in enumerate(zip(success, hit_time)):
-                if suc and hit_time[e_idx] == self.T:
+                if suc and hit_time[e_idx] is None:
                     hit_time[e_idx] = t
+
+            reached_goal = [hit is not None for hit in hit_time]
 
             if any(done):
                 # here we assume all environments are done is ~same number of steps, so we terminate rollouts whenever any of the envs returns done
@@ -173,14 +177,16 @@ class RolloutWorker:
             episode['info_{}'.format(key)] = value
 
         # stats
-        successful = np.array(successes)[-1, :]
+        if self.exploration in ['go_explore', 'go']:
+            successful = np.asarray([1 if hit is not None else 0 for hit in hit_time])
+        else:
+            successful = np.array(successes)[-1, :]
         assert successful.shape == (self.rollout_batch_size,)
         success_rate = np.mean(successful)
         self.success_history.append(success_rate)
 
-        mean_hit_time = np.asarray(hit_time)
-        if self.exploration not in ['go']:
-            self.hit_time_history.append(mean_hit_time)
+        mean_hit_time = np.asarray([hit if hit is not None else -1 for hit in hit_time])
+        self.hit_time_history.append(mean_hit_time)
 
         if self.compute_Q:
             self.Q_history.append(np.mean(Qs))

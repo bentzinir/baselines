@@ -297,8 +297,4 @@ def main(args):
 
 
 if __name__ == '__main__':
-    if True:
-        from mujoco_py import GlfwContext
-        GlfwContext(offscreen=True)
-
     main(sys.argv)

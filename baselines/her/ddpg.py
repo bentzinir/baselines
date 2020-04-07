@@ -161,12 +161,12 @@ class DDPG(object):
             ret[0] = u
         elif exploration == "go":
             ...
-        # elif exploration == "go_explore":
-        #     for idx, go in enumerate(kwargs["go"]):
-        #         if go:
-        #             ...
-        #         else:  # explore
-        #             ret[0][idx] = self._random_action(1)[0]
+        elif exploration == "go_explore":
+            for idx, go in enumerate(kwargs["go"]):
+                if go:
+                    ...
+                else:  # explore
+                    ret[0][idx] = self._random_action(1)[0]
         elif exploration == "fixed_random":
             ret[0] = kwargs['random_action']
         elif exploration == "random":
