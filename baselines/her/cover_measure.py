@@ -199,8 +199,8 @@ def main(args):
             if cover is None:
                 continue
             # m_time = mean_reach_time(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
-            xy = xy_cover(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th, cover_y=cover_y)
-            yx = xy_cover(env, cover_y, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th, cover_y=cover)
+            xy = xy_cover(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
+            yx = xy_cover(env, cover_y, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
             # reach_time, _ = min_reach_time(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
 
             # results[method][epoch] = m_time
