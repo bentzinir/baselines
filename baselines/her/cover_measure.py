@@ -44,10 +44,10 @@ def xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, samp
     sample_set = np.random.choice(list(range(len(cover_x))), sample_size, replace=False)
     hits = []
     for idx in sample_set:
-        info = cover_x[idx]['info']
-        if isinstance(info, collections.Mapping):
-            info = Bunch(info)
-        ex_init = {'x': cover_x[idx]['x'], 'info': info, 'g': cover_x[idx]['x_feat']}
+        ex_init = {'x': cover_x[idx]['x'],
+                   'qpos': cover_x[idx]['qpos'],
+                   'qvel': cover_x[idx]['qvel'],
+                   'g': cover_x[idx]['x_feat']}
         o = env.reset(ex_init=ex_init)
         hit = False
         for n in range(nsteps):
@@ -190,21 +190,21 @@ def main(args):
 
     for method in methods:
         results[method] = {}
-        fname = f"{log_directory}/mca_cover/epoch_{0}.json"
-        cover_y = MetricDiversifier.load_model(fname)
-        for epoch in range(0, 2000, 1):
-            # fname = f"{log_directory}/K{k}/{method}/mca_cover/K{k}.json"
-            fname = f"{log_directory}/mca_cover/epoch_{epoch}.json"
-            cover = MetricDiversifier.load_model(fname)
-            if cover is None:
-                continue
-            # m_time = mean_reach_time(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
-            xy = xy_cover(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
-            yx = xy_cover(env, cover_y, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
-            # reach_time, _ = min_reach_time(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
+        # fname = f"{log_directory}/mca_cover/epoch_{0}.json"
+        # cover_y = MetricDiversifier.load_model(fname)
+        for epoch in range(2000, 200, -1):
+            for k in [100, 200, 300]:
+                fname = f"{log_directory}/{k}/mca_cover/epoch_{epoch}.json"
+                cover = MetricDiversifier.load_model(fname)
+                if cover is None:
+                    continue
+                # m_time = mean_reach_time(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
+                xy = xy_cover(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
+                # yx = xy_cover(env, cover_y, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
+                # reach_time, _ = min_reach_time(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
 
-            # results[method][epoch] = m_time
-            print(f"{method}, epoch={epoch}, xy time = {np.asarray(xy).mean()}, yx_cover: {np.asarray(yx).mean()}")
+                # results[method][epoch] = m_time
+                print(f"epoch={epoch}, k:{k}, xy time = {np.asarray(xy).mean()}")
     plot(results, log_directory)
 
 

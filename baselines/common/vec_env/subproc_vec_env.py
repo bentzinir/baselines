@@ -137,8 +137,6 @@ def _flatten_obs(obs):
     if isinstance(obs[0], dict):
         keys = obs[0].keys()
         flattened_obs = {k: np.stack([o[k] for o in obs]) for k in keys}
-        if 'state_info' in keys:
-            flattened_obs['state_info'] = [ob['state_info'] for ob in obs]
         return flattened_obs
     else:
         return np.stack(obs)

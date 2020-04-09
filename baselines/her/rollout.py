@@ -48,14 +48,15 @@ class RolloutWorker:
             return
 
         if ex_init is None:
-            ex_init = [{'x': None, 'info': None, 'g': None} for _ in range(self.venv.num_envs)]
+            ex_init = [{'x': None, 'qpos': None, 'qvel': None, 'g': None} for _ in range(self.venv.num_envs)]
 
         self.obs_dict = self.venv.reset(ex_init, record)
         self.initial_o = self.obs_dict['observation']
         self.initial_ag = self.obs_dict['achieved_goal']
         self.g = self.obs_dict['desired_goal']
-        if 'state_info' in self.obs_dict:
-            self.initial_state_info = self.obs_dict['state_info']
+
+        self.initial_qpos = self.obs_dict['qpos']
+        self.initial_qvel = self.obs_dict['qvel']
 
     def generate_rollouts(self, ex_init=None, record=False, random=False):
         """Performs `rollout_batch_size` rollouts in parallel for time horizon `T` with the current
@@ -70,6 +71,12 @@ class RolloutWorker:
         ag = np.empty((self.rollout_batch_size, self.dims['g']), np.float32)  # achieved goals
         o[:] = self.initial_o
         ag[:] = self.initial_ag
+
+        qpos = np.empty((self.rollout_batch_size, self.dims['qpos']), np.float32)
+        qvel = np.empty((self.rollout_batch_size, self.dims['qvel']), np.float32)
+
+        qpos[:] = self.initial_qpos
+        qvel[:] = self.initial_qvel
 
         num_envs = self.venv.num_envs
 
@@ -87,10 +94,7 @@ class RolloutWorker:
         obs, achieved_goals, acts, goals, successes = [], [], [], [], []
         dones = []
         info_values = [np.empty((self.T - 1, self.rollout_batch_size, self.dims['info_' + key]), np.float32) for key in self.info_keys]
-        Qs, s_infos = [], []
-
-        if hasattr(self, 'initial_state_info'):
-            state_info = self.initial_state_info
+        Qs, qposes, qvels = [], [], []
 
         for t in range(self.T):
             policy_output = self.policy.get_actions(
@@ -118,8 +122,9 @@ class RolloutWorker:
             obs_dict_new, _, done, info = self.venv.step(u)
             o_new = obs_dict_new['observation']
             ag_new = obs_dict_new['achieved_goal']
-            if 'state_info' in obs_dict_new:
-                state_info_new = obs_dict_new['state_info']
+
+            qpos_new = obs_dict_new['qpos']
+            qvel_new = obs_dict_new['qvel']
 
             success = np.array([i.get('is_success', 0.0) for i in info])
 
@@ -146,29 +151,29 @@ class RolloutWorker:
 
             dones.append(done)
             obs.append(o.copy())
+            qposes.append(qpos.copy())
+            qvels.append(qvel.copy())
             achieved_goals.append(ag.copy())
             successes.append(success.copy())
             acts.append(u.copy())
             goals.append(self.g.copy())
-            if 'state_info' in obs_dict_new:
-                s_infos.append(list(state_info))
-                state_info = state_info_new
             o[...] = o_new
             ag[...] = ag_new
+            qpos[...] = qpos_new
+            qvel[...] = qvel_new
         obs.append(o.copy())
         achieved_goals.append(ag.copy())
-        if 'state_info' in obs_dict_new:
-            s_infos.append(state_info)
+        qposes.append(qpos.copy())
+        qvels.append(qvel.copy())
 
         episode = dict(o=obs,
                        u=acts,
                        g=goals,
                        ag=achieved_goals,
-                       # s_info=s_infos,
+                       qpos=qposes,
+                       qvel=qvels,
                        # t=Ts
                        )
-        if 'state_info' in obs_dict_new:
-            episode['s_info'] = s_infos
 
         if self.compute_Q:
             episode["Qs"] = Qs

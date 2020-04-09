@@ -18,7 +18,7 @@ from baselines.common.misc_util import set_default_value
 np.set_printoptions(precision=6)
 
 
-def save(epoch, policy, evaluator, mca, rank, best_success_rate, save_path, save_interval, k):
+def save(epoch, policy, evaluator, rank, best_success_rate, save_path, save_interval):
     if evaluator.active:
         # save the policy if it's better than the previous ones
         success_rate = mpi_average(evaluator.current_success_rate())
@@ -27,13 +27,11 @@ def save(epoch, policy, evaluator, mca, rank, best_success_rate, save_path, save
         model_path = os.path.expanduser(model_path)
         if rank == 0 and success_rate > best_success_rate and save_path:
             best_success_rate = success_rate
-            save_message = f'(new best, rate: {best_success_rate:.2f}, best path: {model_path}, cover size: {k})'
+            save_message = f'(new best, rate: {best_success_rate:.2f}, best path: {model_path})'
             policy.save(model_path, message=save_message)
-            mca.state_model.save(os.path.join(save_path, "mca_cover"), message=f"best_model")
         if rank == 0 and save_interval > 0 and epoch % save_interval == 0 and save_path:
-            save_message = f'(periodic, current best:{best_success_rate:.2f}, cover size: {k})'
+            save_message = f'(periodic, current best:{best_success_rate:.2f})'
             policy.save(model_path, message=save_message)
-            mca.state_model.save(os.path.join(save_path, "mca_cover"), message=f"epoch_{epoch}")
     return best_success_rate
 
 
@@ -67,56 +65,68 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
     best_success_rate = -1
 
     if policy.bc_loss == 1: policy.init_demo_buffer(demo_file)  # initialize demo buffer if training with demonstrations
-    n_mca_envs = mca.rollout_worker.venv.num_envs
+    n_mca_envs = mca[0].rollout_worker.venv.num_envs
     # num_timesteps = n_epochs * n_cycles * rollout_length * number of rollout workers
 
     for epoch in range(n_epochs):
 
         # train
         rollout_worker.clear_history()
-        mca.rollout_worker.clear_history()
+        mca[0].rollout_worker.clear_history()
         for n1 in range(n_cycles):
             random = (n1 % 2) == 0
             episode = rollout_worker.generate_rollouts()
             # mca.store_ex_episode(episode)
-            mca_episode = mca.rollout_worker.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs),
-                                                               random=random_cover or random or not trainable)
+            ex_inits_a = mca[np.random.randint(len(mca))].state_model.draw(n_mca_envs)
+            ex_inits_b = mca[np.random.randint(len(mca))].state_model.draw(n_mca_envs)
+            if ex_inits_a and ex_inits_b:
+                for l in range(len(ex_inits_a)):
+                    ex_inits_a[l]["g"] = ex_inits_b[l]["g"]
+            mca_episode = mca[0].rollout_worker.generate_rollouts(ex_init=ex_inits_a,
+                                                                  random=random_cover or random or not trainable)
 
-            mca.load_episode(mca_episode)
+            # mca.load_episode(mca_episode)
+            mca[np.random.randint(len(mca))].update_metric_model()
 
             if not trainable:
                 continue
 
-            episode = mca.overload_sg(episode, mca_episode)
-            mca_episode = mca.overload_ss(mca_episode)
+            # episode = mca.overload_sg(episode, mca_episode)
+            # mca_episode = mca.overload_ss(mca_episode)
 
             # if random:
             #     continue
 
             policy.store_episode(episode)
-            mca.policy.store_episode(mca_episode)
+            mca[0].policy.store_episode(mca_episode)
 
             for n2 in range(n_batches):
                 policy.train()
-                mca.policy.train()
+                mca[0].policy.train()
             policy.update_target_net()
-            mca.policy.update_target_net()
+            mca[0].policy.update_target_net()
 
         # test
         evaluator.clear_history()
-        mca.evaluator.clear_history()
+        mca[0].evaluator.clear_history()
         for n3 in range(n_test_rollouts):
             record = n3 == 0 and epoch % policy_save_interval == 0
             evaluator.generate_rollouts(record=record)
-            mca.evaluator.generate_rollouts(ex_init=mca.state_model.draw(n_mca_envs), record=record, random=random_cover)
+            mca[0].evaluator.generate_rollouts(ex_init=mca[np.random.randint(len(mca))].state_model.draw(n_mca_envs),
+                                               record=record,
+                                               random=random_cover)
 
         # record logs
         log(epoch, evaluator, rollout_worker, policy, rank, "policy")
-        log(epoch, mca.evaluator, mca.rollout_worker, mca.policy, rank, "explorer")
+        log(epoch, mca[0].evaluator, mca[0].rollout_worker, mca[0].policy, rank, "explorer")
 
         # save the policy if it's better than the previous ones
-        best_success_rate = save(epoch, policy, evaluator, None, rank, best_success_rate, save_path, policy_save_interval, k=None)
-        mca.best_success_rate = save(epoch, mca.policy, mca.evaluator, mca, rank, mca.best_success_rate, save_path, policy_save_interval, k=mca.state_model.current_size)
+        best_success_rate = save(epoch, policy, evaluator, rank, best_success_rate, save_path, policy_save_interval)
+
+        mca[0].best_success_rate = save(epoch, mca[0].policy, mca[0].evaluator, rank, mca[0].best_success_rate, save_path, policy_save_interval)
+
+        if epoch % policy_save_interval == 0:
+            [m.state_model.save(message=f"epoch_{epoch}") for m in mca]
 
         # make sure that different threads have different seeds
         local_uniform = np.random.uniform(size=(1,))
@@ -261,25 +271,27 @@ def learn(*, network, env, mca_env, total_timesteps,
     load_p = 1
     phase_length = n_cycles * rollout_worker.T * mca_rw.rollout_batch_size * load_p
 
-    mca_state_model = MetricDiversifier(k=kwargs['k'],
-                                        reward_fun=reward_fun,
-                                        vis=True,
-                                        vis_coords=coord_dict['vis'],
-                                        load_model=kwargs['load_mca_path'],
-                                        save_path=log_path,
-                                        random_cover=kwargs["random_cover"],
-                                        load_p=load_p,
-                                        phase_length=phase_length,
-                                        dilute_at_goal=kwargs['dilute_at_goal'])
+    mca = []
+    for kidx, k in enumerate([100, 200, 300]):
+        mca_state_model = MetricDiversifier(k=k,
+                                            reward_fun=reward_fun,
+                                            vis=True,
+                                            vis_coords=coord_dict['vis'],
+                                            load_model=kwargs['load_mca_path'],
+                                            save_path=f"{log_path}/{k}/mca_cover",
+                                            random_cover=kwargs["random_cover"],
+                                            load_p=load_p,
+                                            phase_length=phase_length,
+                                            dilute_at_goal=kwargs['dilute_at_goal'])
 
-    mca = MCA(policy=mca_policy,
-              rollout_worker=mca_rw,
-              evaluator=mca_evaluator,
-              state_model=mca_state_model,
-              sharing=sharing,
-              coord_dict=coord_dict,
-              ss=ss
-              )
+        mca.append(MCA(policy=mca_policy,
+                       rollout_worker=mca_rw,
+                       evaluator=mca_evaluator,
+                       state_model=mca_state_model,
+                       sharing=sharing,
+                       coord_dict=coord_dict,
+                       ss=ss
+                       ))
     ##############################################################################
 
     if 'n_epochs' not in kwargs:

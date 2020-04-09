@@ -60,12 +60,13 @@ class VisObserver:
 
 class MetricDiversifier:
     def __init__(self, k, reward_fun, random_cover=False, load_p=1, vis=False, vis_coords=None, load_model=None,
-                 phase_length=1000, dilute_at_goal=False, **kwargs):
+                 phase_length=1000, dilute_at_goal=False, save_path=None, **kwargs):
         if random_cover:
             self.kmin = k
         else:
             self.kmin = k
         self.k = k
+        self.k_approx = k // 10
         self.M = -np.inf * np.ones((self.k, self.k))
         self.age = np.zeros(self.k)
         self.reward_fun = reward_fun
@@ -75,6 +76,7 @@ class MetricDiversifier:
         self.x_proposal = self.init_record(x=None)
         self.random_cover = random_cover
         self.dilute_at_goal = dilute_at_goal
+        self.save_path = save_path
         self.load_p = load_p
         self.vis = vis
         self.vis_coords = vis_coords
@@ -102,10 +104,6 @@ class MetricDiversifier:
                     val = None
                 elif isinstance(val, (np.floating, np.integer)):
                     val = val.item()
-                elif isinstance(val, collections.Mapping) and key == 'info':  # this is for Mujoco sim state
-                    for skey, sval in val.items():
-                        if type(sval) == np.ndarray:
-                            val[skey] = sval.tolist()
                 z[i][key] = val
         return z
 
@@ -165,7 +163,7 @@ class MetricDiversifier:
 
         self.age += 1
 
-        ref_idx_set = np.random.choice(list(range(self.current_size)), 10, replace=False)
+        ref_idx_set = np.random.choice(list(range(self.current_size)), self.k_approx, replace=False)
 
         # refresh outdated matrix entries
         for idx in ref_idx_set:
@@ -325,10 +323,10 @@ class MetricDiversifier:
         for s_idx, g_idx in zip(s_idxs, g_idxs):
             s_record = self.buffer[s_idx]
             g_record = self.buffer[g_idx]
-            info = s_record['info']
-            if isinstance(info, collections.Mapping):
-                info = Bunch(s_record['info'])
-            batch.append({'x': s_record['x'], 'info': info, 'g': g_record['x_feat']})
+            batch.append({'x': s_record['x'],
+                          'qpos': s_record['qpos'],
+                          'qvel': s_record['qvel'],
+                          'g': g_record['x_feat']})
         return batch
 
     def _update_figure(self):
@@ -363,10 +361,10 @@ class MetricDiversifier:
         return len(self.buffer)
 
     @staticmethod
-    def init_record(x=None, x_feat=None, info=None, distance=-np.inf):
+    def init_record(x=None, x_feat=None, qpos=None, qvel=None, distance=-np.inf):
         if x_feat is None:
             x_feat = x
-        return {'x': x, 'x_feat': x_feat, 'c': 0, 'info': info, 'distance': distance, 'nn': None}
+        return {'x': x, 'x_feat': x_feat, 'c': 0, 'qpos': qpos, 'qvel': qvel, 'distance': distance, 'nn': None}
 
     def save_model(self, save_path, message=None):
         if not os.path.exists(save_path):

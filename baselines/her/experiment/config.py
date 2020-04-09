@@ -207,6 +207,8 @@ def configure_dims(params):
         'o': obs['observation'].shape[0],
         'u': env.action_space.shape[0],
         'g': obs['desired_goal'].shape[0],
+        'qpos': obs['qpos'].shape[0],
+        'qvel': obs['qvel'].shape[0],
     }
     for key, value in info.items():
         value = np.array(value)

@@ -103,7 +103,7 @@ class DDPG(object):
             self._create_network(reuse=reuse)
 
         # Configure the replay buffer.
-        buffer_shapes = {key: (self.T-1 if key != 'o' else self.T, *input_shapes[key])
+        buffer_shapes = {key: (self.T-1 if key not in ['o', 'qpos', 'qvel'] else self.T, *input_shapes[key])
                          for key, val in input_shapes.items()}
         buffer_shapes['g'] = (buffer_shapes['g'][0], self.dimg)
         buffer_shapes['ag'] = (self.T, self.dimg)
