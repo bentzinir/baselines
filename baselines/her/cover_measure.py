@@ -36,7 +36,7 @@ def plot(results, log_directory):
         cover_plot(cover=val, name=key)
     ax.legend()
     plt.savefig(f"{log_directory}/lift.png")
-    print(f"saved figure to: {log_directory}/lift.png")
+    # print(f"saved figure to: {log_directory}/lift.png")
     # plt.show()
 
 
@@ -198,22 +198,23 @@ def main(args):
     distance_th = set_default_value(extra_args, 'cover_distance_threshold', None)
 
     results = {}
-    hit_time = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=False)
-    success_rate = parse_log(f"{log_directory}/log.txt", field_name="test/success_rate")
-    results["test/hit_time_rate"] = {}
-    for key in hit_time.keys():
-        results["test/hit_time_rate"][key] = hit_time[key] * success_rate[key]
-
-    results["test/mean_Q"] = parse_log(f"{log_directory}/log.txt", field_name="test/mean_Q")
-    results["test/mean_Q_hit_rate"] = {}
-    for key, val in results["test/mean_Q"].items():
-        results["test/mean_Q_hit_rate"][key] = nsteps - val
+    # hit_time = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=False)
+    # success_rate = parse_log(f"{log_directory}/log.txt", field_name="test/success_rate")
+    # results["test/hit_time_rate"] = {}
+    # for key in hit_time.keys():
+    #     results["test/hit_time_rate"][key] = hit_time[key] * success_rate[key]
+    #
+    # results["test/mean_Q"] = parse_log(f"{log_directory}/log.txt", field_name="test/mean_Q")
+    # results["test/mean_Q_hit_rate"] = {}
+    # for key, val in results["test/mean_Q"].items():
+    #     results["test/mean_Q_hit_rate"][key] = nsteps - val
 
     for method in methods:
-        results[method] = {}
+        results["hit rate"] = {}
+        results["roam time"] = {}
         # fname = f"{log_directory}/mca_cover/epoch_{0}.json"
         # cover_y = MetricDiversifier.load_model(fname)
-        for epoch in range(0, 2000, 1):
+        for epoch in range(0, 5000, 1):
             for k in [100]:
                 fname = f"{log_directory}/{k}/mca_cover/epoch_{epoch}.json"
                 cover = MetricDiversifier.load_model(fname)
@@ -223,10 +224,10 @@ def main(args):
                 xy = xy_cover(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
                 # yx = xy_cover(env, cover_y, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
                 # reach_time, _ = min_reach_time(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
-
-                # results[method][epoch] = m_time
                 print(f"epoch={epoch}, k:{k}, hit rate / roam time = {xy}")
-    plot(results, log_directory)
+                results["hit rate"][epoch] = xy[0]
+                results["roam time"][epoch] = xy[1]
+                plot(results, log_directory)
 
 
 if __name__ == '__main__':
