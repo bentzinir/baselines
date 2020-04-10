@@ -40,17 +40,29 @@ def plot(results, log_directory):
     # plt.show()
 
 
-def xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, sample_size=15):
-    sample_set = np.random.choice(list(range(len(cover_x))), sample_size, replace=False)
-    hits = []
-    for idx in sample_set:
-        ex_init = {'x': cover_x[idx]['x'],
-                   'qpos': cover_x[idx]['qpos'],
-                   'qvel': cover_x[idx]['qvel'],
-                   'g': cover_x[idx]['x_feat']}
-        o = env.reset(ex_init=ex_init)
-        hit = False
+def init_from_point(env, pnt):
+    ex_init = {'x': pnt['x'],
+               'qpos': pnt['qpos'],
+               'qvel': pnt['qvel'],
+               'g': pnt['x_feat']}
+    return env.reset(ex_init=ex_init)
+
+
+def xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, n_actions=30, vis=False):
+    idx = np.random.randint(len(cover_x))
+    hit = False
+    hit_time = nsteps
+    for _ in range(n_actions):
+        if hit:
+            break
+        o = init_from_point(env, cover_x[idx])
+        if vis:
+            env.render()
+            z=1
+        a = env.action_space.sample()
         for n in range(nsteps):
+            if n >= hit_time:
+                break
             if hit:
                 break
             for j in range(len(cover_y)):
@@ -58,24 +70,33 @@ def xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, samp
                     continue
                 if reward_fun(env, ag_2=o["achieved_goal"], g=cover_y[j]['x_feat'], info={}, dist_th=distance_th):
                     hit = True
+                    hit_time = n
+                    if vis:
+                        print(f"difference: {np.linalg.norm(o['achieved_goal'] - cover_y[j]['x_feat'])}")
+                        env.render()
+                        init_from_point(env, cover_y[j])
+                        env.render()
+                        z=1
                     break
-            o, *_ = env.step(env.action_space.sample())
-        hits.append(hit)
-    return np.asarray(hits).astype(np.float32).mean()
+            o, *_ = env.step(a)
+            if vis:
+                env.render()
+    return hit, hit_time
 
 
 def xy_cover(env, cover_x, nsamples, nsteps, distance_th, cover_y=None):
-    hits_array = []
+    rates = []
+    times = []
     if cover_y is None:
         cover_y = cover_x
         self_cover = True
     else:
         self_cover = False
-
     for ns in range(nsamples):
-        hits_array.append(xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, sample_size=15))
-
-    return np.asarray(hits_array).mean()
+        rate, time = xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover)
+        rates.append(rate)
+        times.append(time)
+    return np.asarray(rates).mean(), np.asarray(times).mean()
 
 
 def min_reach_time(env, cover, nsamples, nsteps, distance_th):
@@ -172,8 +193,8 @@ def main(args):
     log_directory = extra_args["load"]
     # methods = ["random", "learned"]
     methods = [""]
-    nsteps = 100
-    nsamples = 5
+    nsteps = 10
+    nsamples = 50
     distance_th = set_default_value(extra_args, 'cover_distance_threshold', None)
 
     results = {}
@@ -192,8 +213,8 @@ def main(args):
         results[method] = {}
         # fname = f"{log_directory}/mca_cover/epoch_{0}.json"
         # cover_y = MetricDiversifier.load_model(fname)
-        for epoch in range(2000, 200, -1):
-            for k in [100, 200, 300]:
+        for epoch in range(0, 2000, 1):
+            for k in [100]:
                 fname = f"{log_directory}/{k}/mca_cover/epoch_{epoch}.json"
                 cover = MetricDiversifier.load_model(fname)
                 if cover is None:
@@ -204,7 +225,7 @@ def main(args):
                 # reach_time, _ = min_reach_time(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
 
                 # results[method][epoch] = m_time
-                print(f"epoch={epoch}, k:{k}, xy time = {np.asarray(xy).mean()}")
+                print(f"epoch={epoch}, k:{k}, hit rate / roam time = {xy}")
     plot(results, log_directory)
 
 
