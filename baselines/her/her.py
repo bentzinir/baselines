@@ -58,7 +58,8 @@ def mpi_average(value):
 
 
 def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
-          save_path, demo_file, mca, random_cover=False, trainable=True, **kwargs):
+          save_path, demo_file, mca, random_cover=False, trainable=True, cover_env=None,
+          cover_distance_th, **kwargs):
     rank = MPI.COMM_WORLD.Get_rank()
 
     logger.info("Training...")
@@ -68,14 +69,15 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
     n_mca_envs = mca[0].rollout_worker.venv.num_envs
     # num_timesteps = n_epochs * n_cycles * rollout_length * number of rollout workers
 
+    best_roam_time = -1
     for epoch in range(n_epochs):
-
         # train
         rollout_worker.clear_history()
         mca[0].rollout_worker.clear_history()
         for n1 in range(n_cycles):
             random = (n1 % 2) == 0
             episode = rollout_worker.generate_rollouts()
+
             # mca.store_ex_episode(episode)
             ex_inits_a = mca[np.random.randint(len(mca))].state_model.draw(n_mca_envs)
             ex_inits_b = mca[np.random.randint(len(mca))].state_model.draw(n_mca_envs)
@@ -127,6 +129,10 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
 
         if epoch % policy_save_interval == 0:
             [m.state_model.save(message=f"epoch_{epoch}") for m in mca]
+            from baselines.her.cover_measure import xy_cover
+            hit_rate, roam_time = xy_cover(cover_env, mca[0].state_model.buffer, nsamples=50, nsteps=10, distance_th=0.05)
+            if roam_time > best_roam_time:
+                best_roam_time = roam_time
 
         # conditional reset of state model
         from baselines.her.cover_measure import xy_cover
@@ -316,7 +322,7 @@ def learn(*, network, env, mca_env, total_timesteps,
                  mca=mca,
                  random_cover=kwargs['random_cover'],
                  trainable=trainable,
-                 # cover_measure_env=kwargs['cover_measure_env'],
+                 cover_measure_env=kwargs['cover_measure_env'],
                  cover_distance_th=cover_distance_th
                  )
 
