@@ -49,6 +49,9 @@ def init_from_point(env, pnt):
 
 
 def xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, n_actions=30, vis=False):
+    if len(cover_x) == 0:
+        return True, 0
+
     idx = np.random.randint(len(cover_x))
     hit = False
     hit_time = nsteps
@@ -193,7 +196,7 @@ def main(args):
     log_directory = extra_args["load"]
     # methods = ["random", "learned"]
     methods = [""]
-    nsteps = 10
+    nsteps = 20
     nsamples = 50
     distance_th = set_default_value(extra_args, 'cover_distance_threshold', None)
 
@@ -210,12 +213,13 @@ def main(args):
     #     results["test/mean_Q_hit_rate"][key] = nsteps - val
 
     for method in methods:
-        results["hit rate"] = {}
-        results["roam time"] = {}
+        for k in [100, 200, 300]:
+            # results[f"hit rate {k}"] = {}
+            results[f"roam time {k}"] = {}
         # fname = f"{log_directory}/mca_cover/epoch_{0}.json"
         # cover_y = MetricDiversifier.load_model(fname)
         for epoch in range(0, 5000, 1):
-            for k in [100]:
+            for k in [100, 200, 300]:
                 fname = f"{log_directory}/{k}/mca_cover/epoch_{epoch}.json"
                 cover = MetricDiversifier.load_model(fname)
                 if cover is None:
@@ -225,8 +229,8 @@ def main(args):
                 # yx = xy_cover(env, cover_y, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
                 # reach_time, _ = min_reach_time(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
                 print(f"epoch={epoch}, k:{k}, hit rate / roam time = {xy}")
-                results["hit rate"][epoch] = xy[0]
-                results["roam time"][epoch] = xy[1]
+                # results[f"hit rate {k}"][epoch] = xy[0]
+                results[f"roam time {k}"][epoch] = xy[1]
                 plot(results, log_directory)
 
 

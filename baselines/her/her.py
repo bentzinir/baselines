@@ -58,7 +58,7 @@ def mpi_average(value):
 
 
 def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
-          save_path, demo_file, mca, random_cover=False, trainable=True, cover_env=None,
+          save_path, demo_file, mca, random_cover=False, trainable=True, cover_measure_env=None,
           cover_distance_th, **kwargs):
     rank = MPI.COMM_WORLD.Get_rank()
 
@@ -69,7 +69,6 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
     n_mca_envs = mca[0].rollout_worker.venv.num_envs
     # num_timesteps = n_epochs * n_cycles * rollout_length * number of rollout workers
 
-    best_roam_time = -1
     for epoch in range(n_epochs):
         # train
         rollout_worker.clear_history()
@@ -128,15 +127,12 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         mca[0].best_success_rate = save(epoch, mca[0].policy, mca[0].evaluator, rank, mca[0].best_success_rate, save_path, policy_save_interval)
 
         if epoch % policy_save_interval == 0:
-            [m.state_model.save(message=f"epoch_{epoch}") for m in mca]
-            from baselines.her.cover_measure import xy_cover
-            hit_rate, roam_time = xy_cover(cover_env, mca[0].state_model.buffer, nsamples=50, nsteps=10, distance_th=0.05)
-            if roam_time > best_roam_time:
-                best_roam_time = roam_time
-
-        # conditional reset of state model
-        from baselines.her.cover_measure import xy_cover
-        xy = xy_cover(env, mca[0].state_model.buffer, nsamples=50, nsteps=10, distance_th=0.05)
+            for m in mca:
+                from baselines.her.cover_measure import xy_cover
+                hit_rate, roam_time = xy_cover(cover_measure_env, m.state_model.buffer, nsamples=50, nsteps=20, distance_th=cover_distance_th)
+                print(f"epoch: {epoch}, k: {m.state_model.k}, roam time: {roam_time}")
+                m.state_model.update_buffer(roam_time)
+                m.state_model.save(message=f"epoch_{epoch}")
 
         # make sure that different threads have different seeds
         local_uniform = np.random.uniform(size=(1,))

@@ -3,7 +3,7 @@ from collections import deque
 import matplotlib.pyplot as plt
 import os
 import json
-import collections
+import copy
 
 
 class Bunch(object):
@@ -71,6 +71,8 @@ class MetricDiversifier:
         self.age = np.zeros(self.k)
         self.reward_fun = reward_fun
         self.buffer = deque(maxlen=self.k)
+        self._buffer = deque(maxlen=self.k)
+        self.roam_time = -np.inf
         self.proposal = False
         self.phase_length = phase_length
         self.x_proposal = self.init_record(x=None)
@@ -220,6 +222,17 @@ class MetricDiversifier:
         set_x_mat = self._buffer_2_array(val='x', idxs=list(range(self.current_size)))
         self.M[:, j] = self.quasimetric(a=set_x_mat, b=pnt_feat_mat, d_func=d_func)
         self.M[j, j] = np.inf
+
+    def update_buffer(self, roam_time):
+        if roam_time >= self.roam_time:
+            self.roam_time = roam_time
+            self._buffer = copy.deepcopy(self.buffer)
+            print(f"New best roam time: {self.roam_time}")
+        else:
+            # reset to previous buffer
+            self.buffer = copy.deepcopy(self._buffer)
+            self.age += np.inf
+            print(f"Resetting to previous buffer, current roam time: {self.roam_time}")
 
     def _load_active(self, new_pnt, d_func):
         # load new_pnt if the buffer is empty
