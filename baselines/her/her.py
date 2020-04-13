@@ -128,6 +128,10 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         if epoch % policy_save_interval == 0:
             [m.state_model.save(message=f"epoch_{epoch}") for m in mca]
 
+        # conditional reset of state model
+        from baselines.her.cover_measure import xy_cover
+        xy = xy_cover(env, mca[0].state_model.buffer, nsamples=50, nsteps=10, distance_th=0.05)
+
         # make sure that different threads have different seeds
         local_uniform = np.random.uniform(size=(1,))
         root_uniform = local_uniform.copy()
