@@ -76,6 +76,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         for n1 in range(n_cycles):
             random = (n1 % 2) == 0
             episode = rollout_worker.generate_rollouts()
+
             # mca.store_ex_episode(episode)
             ex_inits_a = mca[np.random.randint(len(mca))].state_model.draw(n_mca_envs)
             ex_inits_b = mca[np.random.randint(len(mca))].state_model.draw(n_mca_envs)
