@@ -117,6 +117,16 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
                                                record=record,
                                                random=random_cover)
 
+        if epoch % policy_save_interval == 0:
+            for m in mca:
+                from baselines.her.cover_measure import xy_cover
+                hit_rate, roam_time = xy_cover(cover_measure_env, m.state_model.buffer, nsamples=100, nsteps=20, distance_th=cover_distance_th)
+                print(f"epoch: {epoch}, k: {m.state_model.k}, roam time: {roam_time.mean()}+- {roam_time.std()}")
+                logger.record_tabular(f'k: {m.state_model.k}, RT mean', roam_time.mean())
+                logger.record_tabular(f'k: {m.state_model.k}, RT std', roam_time.std())
+                m.state_model.update_buffer(roam_time.mean()-roam_time.std())
+                m.state_model.save(message=f"epoch_{epoch}")
+
         # record logs
         log(epoch, evaluator, rollout_worker, policy, rank, "policy")
         log(epoch, mca[0].evaluator, mca[0].rollout_worker, mca[0].policy, rank, "explorer")
@@ -125,14 +135,6 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         best_success_rate = save(epoch, policy, evaluator, rank, best_success_rate, save_path, policy_save_interval)
 
         mca[0].best_success_rate = save(epoch, mca[0].policy, mca[0].evaluator, rank, mca[0].best_success_rate, save_path, policy_save_interval)
-
-        if epoch % policy_save_interval == 0:
-            for m in mca:
-                from baselines.her.cover_measure import xy_cover
-                hit_rate, roam_time = xy_cover(cover_measure_env, m.state_model.buffer, nsamples=50, nsteps=20, distance_th=cover_distance_th)
-                print(f"epoch: {epoch}, k: {m.state_model.k}, roam time: {roam_time}")
-                m.state_model.update_buffer(roam_time)
-                m.state_model.save(message=f"epoch_{epoch}")
 
         # make sure that different threads have different seeds
         local_uniform = np.random.uniform(size=(1,))
@@ -278,7 +280,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     phase_length = n_cycles * rollout_worker.T * mca_rw.rollout_batch_size * load_p
 
     mca = []
-    for kidx, k in enumerate([100, 200, 300]):
+    for kidx, k in enumerate([100, 300, 500]):
         mca_state_model = MetricDiversifier(k=k,
                                             reward_fun=reward_fun,
                                             vis=True,

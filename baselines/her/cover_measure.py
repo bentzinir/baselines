@@ -23,21 +23,18 @@ def plot(results, log_directory):
 
     fig, ax = plt.subplots(1, 1)
 
-    def cover_plot(cover, name):
-        x = list(cover.keys())
-        y = np.asarray([np.asarray(item).mean() for item in cover.values()])
-        error = np.asarray([np.asarray(item).std() for item in cover.values()])
-
-        # ax.plot(x, y, f"{color}-")
+    def cover_plot(data, name):
+        y = data["mean"]
+        x = np.arange(len(y)) * data["xscale"]
         ax.plot(x, y, label=name)
-        ax.fill_between(x, y - error, y + error, alpha=0.5)
+        if "std" in data:
+            error = data["std"]
+            ax.fill_between(x, y - error, y + error, alpha=0.5)
 
     for key, val in results.items():
-        cover_plot(cover=val, name=key)
+        cover_plot(data=val, name=key)
     ax.legend()
     plt.savefig(f"{log_directory}/lift.png")
-    # print(f"saved figure to: {log_directory}/lift.png")
-    # plt.show()
 
 
 def init_from_point(env, pnt):
@@ -99,7 +96,7 @@ def xy_cover(env, cover_x, nsamples, nsteps, distance_th, cover_y=None):
         rate, time = xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover)
         rates.append(rate)
         times.append(time)
-    return np.asarray(rates).mean(), np.asarray(times).mean()
+    return np.asarray(rates), np.asarray(times)
 
 
 def min_reach_time(env, cover, nsamples, nsteps, distance_th):
@@ -172,66 +169,39 @@ def mean_reach_time(env, cover, nsamples, nsteps, distance_th):
     return np.asarray(_hit_time)
 
 
-def parse_log(logfile, field_name, skip_factor=20, normalize=False):
+def parse_log(logfile, field_name, normalize=False):
     with open(logfile, "r") as fid:
         lines = fid.read().splitlines()
-        values = [float(line.split('|')[-2]) for line in lines if field_name in line]
-        epochs = [float(line.split('|')[-2]) for line in lines if " epoch" in line]
-        values = np.asarray(values)
+        values = np.asarray([float(line.split('|')[-2]) for line in lines if field_name in line])
         if normalize:
             values = (values - values.min())
             values = values / values.max()
-        result = {}
-        for epoch, val in zip(epochs[::skip_factor], values[::skip_factor]):
-            result[epoch] = val
-    return result
+    return values
 
 
 def main(args):
     arg_parser = common_arg_parser()
     args, unknown_args = arg_parser.parse_known_args(args)
     extra_args = parse_cmdline_kwargs(unknown_args)
-    env = gym.make(args.env, **extra_args)
-
     log_directory = extra_args["load"]
-    # methods = ["random", "learned"]
-    methods = [""]
-    nsteps = 20
-    nsamples = 50
-    distance_th = set_default_value(extra_args, 'cover_distance_threshold', None)
 
-    results = {}
-    # hit_time = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=False)
-    # success_rate = parse_log(f"{log_directory}/log.txt", field_name="test/success_rate")
-    # results["test/hit_time_rate"] = {}
-    # for key in hit_time.keys():
-    #     results["test/hit_time_rate"][key] = hit_time[key] * success_rate[key]
+    results = dict()
+    # results["hit_time"] = dict()
+    # results["hit_time"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=True)
+    # results["hit_time"]["xscale"] = 1
     #
-    # results["test/mean_Q"] = parse_log(f"{log_directory}/log.txt", field_name="test/mean_Q")
-    # results["test/mean_Q_hit_rate"] = {}
-    # for key, val in results["test/mean_Q"].items():
-    #     results["test/mean_Q_hit_rate"][key] = nsteps - val
+    # results["success"] = dict()
+    # results["success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/success_rate", normalize=True)
+    # results["success"]["xscale"] = 1
 
-    for method in methods:
-        for k in [100, 200, 300]:
-            # results[f"hit rate {k}"] = {}
-            results[f"roam time {k}"] = {}
-        # fname = f"{log_directory}/mca_cover/epoch_{0}.json"
-        # cover_y = MetricDiversifier.load_model(fname)
-        for epoch in range(0, 5000, 1):
-            for k in [100, 200, 300]:
-                fname = f"{log_directory}/{k}/mca_cover/epoch_{epoch}.json"
-                cover = MetricDiversifier.load_model(fname)
-                if cover is None:
-                    continue
-                # m_time = mean_reach_time(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
-                xy = xy_cover(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
-                # yx = xy_cover(env, cover_y, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
-                # reach_time, _ = min_reach_time(env, cover, nsamples=nsamples, nsteps=nsteps, distance_th=distance_th)
-                print(f"epoch={epoch}, k:{k}, hit rate / roam time = {xy}")
-                # results[f"hit rate {k}"][epoch] = xy[0]
-                results[f"roam time {k}"][epoch] = xy[1]
-                plot(results, log_directory)
+    for k in [100, 300, 500]:
+        fmean = f"k: {k}, RT mean"
+        fstd = f"k: {k}, RT std"
+        results[f"{k}"] = dict()
+        results[f"{k}"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name=fmean, normalize=False)
+        results[f"{k}"]["std"] = parse_log(f"{log_directory}/log.txt", field_name=fstd, normalize=False)
+        results[f"{k}"]["xscale"] = 20
+    plot(results, log_directory)
 
 
 if __name__ == '__main__':
