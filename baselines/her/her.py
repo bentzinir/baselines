@@ -320,7 +320,7 @@ def learn(*, network, env, mca_env, total_timesteps,
                  random_cover=kwargs['random_cover'],
                  trainable=trainable,
                  cover_measure_env=kwargs['cover_measure_env'],
-                 cover_distance_th=distance_th
+                 distance_th=distance_th
                  )
 
 

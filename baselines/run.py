@@ -77,6 +77,8 @@ def train(args, extra_args):
         env = build_env(args, extra_args=extra_args)
 
     alg_kwargs['load_mca_path'] = set_default_value(alg_kwargs, 'load_mca_path', None)
+    alg_kwargs['distance_threshold'] = extra_args['distance_threshold']
+
     # build overloaded env for the mca explorer
 
     mca_extra_args = copy.deepcopy(extra_args)
