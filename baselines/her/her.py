@@ -58,8 +58,7 @@ def mpi_average(value):
 
 
 def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
-          save_path, demo_file, mca, random_cover=False, trainable=True, cover_measure_env=None,
-          cover_distance_th, **kwargs):
+          save_path, demo_file, mca, random_cover=False, trainable=True, cover_measure_env=None, distance_th, **kwargs):
     rank = MPI.COMM_WORLD.Get_rank()
 
     logger.info("Training...")
@@ -120,7 +119,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         if epoch % policy_save_interval == 0:
             for m in mca:
                 from baselines.her.cover_measure import xy_cover
-                hit_rate, roam_time = xy_cover(cover_measure_env, m.state_model.buffer, nsamples=100, nsteps=20, distance_th=cover_distance_th)
+                hit_rate, roam_time = xy_cover(cover_measure_env, m.state_model.buffer, nsamples=100, nsteps=20, distance_th=distance_th)
                 print(f"epoch: {epoch}, k: {m.state_model.k}, roam time: {roam_time.mean()}+- {roam_time.std()}")
                 logger.record_tabular(f'k: {m.state_model.k}, RT mean', roam_time.mean())
                 logger.record_tabular(f'k: {m.state_model.k}, RT std', roam_time.std())
@@ -265,7 +264,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     ss = set_default_value(kwargs, 'ss', False)
     sharing = set_default_value(kwargs, 'sharing', False)
     trainable = set_default_value(kwargs, 'trainable', True)
-    cover_distance_th = set_default_value(kwargs, 'cover_distance_threshold', None)
+    distance_th = set_default_value(kwargs, 'distance_threshold', None)
 
     mca_policy, mca_rw, mca_evaluator, mca_params, coord_dict, reward_fun = prepare_agent(mca_env, eval_env,
                                                                                           active=mca_active,
@@ -280,7 +279,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     phase_length = n_cycles * rollout_worker.T * mca_rw.rollout_batch_size * load_p
 
     mca = []
-    for kidx, k in enumerate([100, 300, 500]):
+    for kidx, k in enumerate([100, 300, 500, 700]):
         mca_state_model = MetricDiversifier(k=k,
                                             reward_fun=reward_fun,
                                             vis=True,
@@ -321,7 +320,7 @@ def learn(*, network, env, mca_env, total_timesteps,
                  random_cover=kwargs['random_cover'],
                  trainable=trainable,
                  cover_measure_env=kwargs['cover_measure_env'],
-                 cover_distance_th=cover_distance_th
+                 cover_distance_th=distance_th
                  )
 
 
