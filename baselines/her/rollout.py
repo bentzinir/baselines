@@ -88,7 +88,7 @@ class RolloutWorker:
         if random:
             self.exploration = 'fixed_random'
         else:
-            self.exploration = 'go_explore'  # 'go'
+            self.exploration = 'eps_greedy'  # 'go'
 
         # generate episodes
         obs, achieved_goals, acts, goals, successes = [], [], [], [], []
