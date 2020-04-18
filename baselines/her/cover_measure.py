@@ -45,7 +45,7 @@ def init_from_point(env, pnt):
     return env.reset(ex_init=ex_init)
 
 
-def xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, n_actions=30, vis=False):
+def xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, min_time, n_actions=30, vis=False):
     if len(cover_x) == 0:
         return True, 0
 
@@ -58,10 +58,11 @@ def xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, n_ac
         o = init_from_point(env, cover_x[idx])
         if vis:
             env.render()
-            z=1
         a = env.action_space.sample()
         for n in range(nsteps):
             if n >= hit_time:
+                break
+            if n >= min_time:
                 break
             if hit:
                 break
@@ -76,7 +77,6 @@ def xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, n_ac
                         env.render()
                         init_from_point(env, cover_y[j])
                         env.render()
-                        z=1
                     break
             o, *_ = env.step(a)
             if vis:
@@ -92,11 +92,13 @@ def xy_cover(env, cover_x, nsamples, nsteps, distance_th, cover_y=None):
         self_cover = True
     else:
         self_cover = False
+    min_roam_time = nsteps
     for ns in range(nsamples):
-        rate, time = xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover)
+        rate, roam_time = xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, min_roam_time)
+        min_roam_time = np.minimum(min_roam_time, roam_time)
         rates.append(rate)
-        times.append(time)
-    return np.asarray(rates), np.asarray(times)
+        times.append(roam_time)
+    return np.asarray(rates), np.asarray(min_roam_time)
 
 
 def min_reach_time(env, cover, nsamples, nsteps, distance_th):
@@ -169,13 +171,14 @@ def mean_reach_time(env, cover, nsamples, nsteps, distance_th):
     return np.asarray(_hit_time)
 
 
-def parse_log(logfile, field_name, normalize=False):
+def parse_log(logfile, field_name, normalize=False, scale=1):
     with open(logfile, "r") as fid:
         lines = fid.read().splitlines()
         values = np.asarray([float(line.split('|')[-2]) for line in lines if field_name in line])
         if normalize:
             values = (values - values.min())
             values = values / values.max()
+            values *= scale
     return values
 
 
@@ -190,17 +193,25 @@ def main(args):
     # results["hit_time"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=True)
     # results["hit_time"]["xscale"] = 1
     #
-    # results["success"] = dict()
-    # results["success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/success_rate", normalize=True)
-    # results["success"]["xscale"] = 1
+    results["success"] = dict()
+    results["success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/success_rate", normalize=True, scale=10)
+    results["success"]["xscale"] = 1
 
-    for k in [100, 300, 500]:
+    results["hit time rate"] = dict()
+    results["hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=False)
+    results["hit time rate"]["xscale"] = 1
+
+    results["obs std"] = dict()
+    results["obs std"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="stats_o/std", normalize=True, scale=10)
+    results["obs std"]["xscale"] = 1
+
+    for k in [100, 300, 500, 700]:
         fmean = f"k: {k}, RT mean"
         fstd = f"k: {k}, RT std"
         results[f"{k}"] = dict()
         results[f"{k}"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name=fmean, normalize=False)
         results[f"{k}"]["std"] = parse_log(f"{log_directory}/log.txt", field_name=fstd, normalize=False)
-        results[f"{k}"]["xscale"] = 20
+        results[f"{k}"]["xscale"] = 50
     plot(results, log_directory)
 
 

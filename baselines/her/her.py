@@ -73,7 +73,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         rollout_worker.clear_history()
         mca[0].rollout_worker.clear_history()
         for n1 in range(n_cycles):
-            random = (n1 % 2) == 0
+            random = (n1 % 999) == 0
             episode = rollout_worker.generate_rollouts()
 
             # mca.store_ex_episode(episode)
@@ -86,7 +86,8 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
                                                                   random=random_cover or random or not trainable)
 
             # mca.load_episode(mca_episode)
-            mca[np.random.randint(len(mca))].update_metric_model()
+            if n1 % 5 == 0:
+                mca[np.random.randint(len(mca))].update_metric_model()
 
             if not trainable:
                 continue
@@ -119,11 +120,11 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         if epoch % policy_save_interval == 0:
             for m in mca:
                 from baselines.her.cover_measure import xy_cover
-                hit_rate, roam_time = xy_cover(cover_measure_env, m.state_model.buffer, nsamples=100, nsteps=20, distance_th=distance_th)
+                hit_rate, roam_time = xy_cover(cover_measure_env, m.state_model.buffer, nsamples=100, nsteps=10, distance_th=distance_th)
                 print(f"epoch: {epoch}, k: {m.state_model.k}, roam time: {roam_time.mean()}+- {roam_time.std()}")
                 logger.record_tabular(f'k: {m.state_model.k}, RT mean', roam_time.mean())
                 logger.record_tabular(f'k: {m.state_model.k}, RT std', roam_time.std())
-                m.state_model.update_buffer(roam_time.mean()-roam_time.std())
+                # m.state_model.update_buffer(roam_time.mean()-roam_time.std())
                 m.state_model.save(message=f"epoch_{epoch}")
 
         # record logs
@@ -152,7 +153,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     seed=None,
     eval_env=None,
     replay_strategy='future',
-    policy_save_interval=20,
+    policy_save_interval=50,
     clip_return=True,
     demo_file=None,
     override_params=None,
