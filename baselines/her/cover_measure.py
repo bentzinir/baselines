@@ -25,7 +25,7 @@ def plot(results, log_directory):
 
     def cover_plot(data, name):
         y = data["mean"]
-        x = np.arange(len(y)) * data["xscale"]
+        x = np.arange(0, len(y)) * data["xscale"]
         ax.plot(x, y, label=name)
         if "std" in data:
             error = data["std"]
