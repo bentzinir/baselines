@@ -24,8 +24,8 @@ DEFAULT_ENV_PARAMS = {
     'HandReach10-v0': {
         'n_cycles': 2,
     },
-    'HandReach20-v0': {
-        'n_cycles': 50,
+    'HandManipulateBlock10-v0': {
+        'n_cycles': 2,
     },
 }
 

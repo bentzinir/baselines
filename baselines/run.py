@@ -61,6 +61,8 @@ def train(args, extra_args):
     seed = args.seed
 
     extra_args['mode'] = set_default_value(extra_args, 'mode', 'maximum_span')
+    extra_args['distance_threshold'] = set_default_value(extra_args, 'distance_threshold', None)
+    extra_args['cover_distance_threshold'] = set_default_value(extra_args, 'cover_distance_threshold', None)
 
     learn = get_learn_function(args.alg)
     alg_kwargs = get_learn_function_defaults(args.alg, env_type)
@@ -97,7 +99,7 @@ def train(args, extra_args):
                                video_length=args.save_video_length)
 
     # create non-vectorized environment for evaluating cover distance
-    alg_kwargs['cover_measure_env'] = gym.make(env_id, distance_threshold=alg_kwargs['distance_threshold'])
+    alg_kwargs['cover_measure_env'] = gym.make(env_id, distance_threshold=alg_kwargs['cover_distance_threshold'])
 
     if args.network:
         alg_kwargs['network'] = args.network

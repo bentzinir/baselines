@@ -58,7 +58,7 @@ def mpi_average(value):
 
 
 def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
-          save_path, demo_file, mca, random_cover=False, trainable=True, cover_measure_env=None, distance_th, **kwargs):
+          save_path, demo_file, mca, random_cover=False, trainable=True, cover_measure_env=None, **kwargs):
     rank = MPI.COMM_WORLD.Get_rank()
 
     logger.info("Training...")
@@ -73,7 +73,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         rollout_worker.clear_history()
         mca[0].rollout_worker.clear_history()
         for n1 in range(n_cycles):
-            random = (n1 % 999) == 0
+            # random = (n1 % 999) == 0
             episode = rollout_worker.generate_rollouts()
 
             # mca.store_ex_episode(episode)
@@ -83,10 +83,10 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
                 for l in range(len(ex_inits_a)):
                     ex_inits_a[l]["g"] = ex_inits_b[l]["g"]
             mca_episode = mca[0].rollout_worker.generate_rollouts(ex_init=ex_inits_a,
-                                                                  random=random_cover or random or not trainable)
+                                                                  random=random_cover or not trainable)
 
             # mca.load_episode(mca_episode)
-            if n1 % 5 == 0:
+            if n1 % 1 == 0:
                 mca[np.random.randint(len(mca))].update_metric_model()
 
             if not trainable:
@@ -120,8 +120,8 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         if epoch % policy_save_interval == 0:
             for m in mca:
                 from baselines.her.cover_measure import xy_cover
-                hit_rate, roam_time = xy_cover(cover_measure_env, m.state_model.buffer, nsamples=100, nsteps=10, distance_th=distance_th)
-                print(f"epoch: {epoch}, k: {m.state_model.k}, roam time: {roam_time.mean()}+- {roam_time.std()}")
+                hit_rate, roam_time = xy_cover(cover_measure_env, m.state_model.buffer, nsamples=50, nsteps=20)
+                # print(f"epoch: {epoch}, k: {m.state_model.k}, roam time: {roam_time.mean()}+- {roam_time.std()}")
                 logger.record_tabular(f'k: {m.state_model.k}, RT mean', roam_time.mean())
                 logger.record_tabular(f'k: {m.state_model.k}, RT std', roam_time.std())
                 # m.state_model.update_buffer(roam_time.mean()-roam_time.std())
@@ -153,7 +153,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     seed=None,
     eval_env=None,
     replay_strategy='future',
-    policy_save_interval=50,
+    policy_save_interval=100,
     clip_return=True,
     demo_file=None,
     override_params=None,
@@ -265,7 +265,6 @@ def learn(*, network, env, mca_env, total_timesteps,
     ss = set_default_value(kwargs, 'ss', False)
     sharing = set_default_value(kwargs, 'sharing', False)
     trainable = set_default_value(kwargs, 'trainable', True)
-    distance_th = set_default_value(kwargs, 'distance_threshold', None)
 
     mca_policy, mca_rw, mca_evaluator, mca_params, coord_dict, reward_fun = prepare_agent(mca_env, eval_env,
                                                                                           active=mca_active,
@@ -280,7 +279,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     phase_length = n_cycles * rollout_worker.T * mca_rw.rollout_batch_size * load_p
 
     mca = []
-    for kidx, k in enumerate([100, 300, 500, 700]):
+    for kidx, k in enumerate([50, 100, 150]):
         mca_state_model = MetricDiversifier(k=k,
                                             reward_fun=reward_fun,
                                             vis=True,
@@ -321,7 +320,6 @@ def learn(*, network, env, mca_env, total_timesteps,
                  random_cover=kwargs['random_cover'],
                  trainable=trainable,
                  cover_measure_env=kwargs['cover_measure_env'],
-                 distance_th=distance_th
                  )
 
 

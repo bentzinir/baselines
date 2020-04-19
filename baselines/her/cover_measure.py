@@ -11,8 +11,8 @@ from baselines.her.metric_diversification import Bunch
 from baselines.common.misc_util import set_default_value
 
 
-def reward_fun(env, ag_2, g, info, dist_th):  # vectorized
-    return env.compute_reward(achieved_goal=ag_2, desired_goal=g, info=info, distance_threshold=dist_th)
+def reward_fun(env, ag_2, g, info):  # vectorized
+    return env.compute_reward(achieved_goal=ag_2, desired_goal=g, info=info)
 
 
 def none_init():
@@ -45,7 +45,7 @@ def init_from_point(env, pnt):
     return env.reset(ex_init=ex_init)
 
 
-def xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, min_time, n_actions=30, vis=False):
+def xy_cover_single(env, cover_x, cover_y, nsteps, self_cover, n_actions=30, vis=False):
     if len(cover_x) == 0:
         return True, 0
 
@@ -62,14 +62,12 @@ def xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, min_
         for n in range(nsteps):
             if n >= hit_time:
                 break
-            if n >= min_time:
-                break
             if hit:
                 break
             for j in range(len(cover_y)):
                 if self_cover and j == idx:
                     continue
-                if reward_fun(env, ag_2=o["achieved_goal"], g=cover_y[j]['x_feat'], info={}, dist_th=distance_th):
+                if reward_fun(env, ag_2=o["achieved_goal"], g=cover_y[j]['x_feat'], info={}):
                     hit = True
                     hit_time = n
                     if vis:
@@ -84,7 +82,7 @@ def xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, min_
     return hit, hit_time
 
 
-def xy_cover(env, cover_x, nsamples, nsteps, distance_th, cover_y=None):
+def xy_cover(env, cover_x, nsamples, nsteps, cover_y=None):
     rates = []
     times = []
     if cover_y is None:
@@ -92,13 +90,11 @@ def xy_cover(env, cover_x, nsamples, nsteps, distance_th, cover_y=None):
         self_cover = True
     else:
         self_cover = False
-    min_roam_time = nsteps
     for ns in range(nsamples):
-        rate, roam_time = xy_cover_single(env, cover_x, cover_y, nsteps, distance_th, self_cover, min_roam_time)
-        min_roam_time = np.minimum(min_roam_time, roam_time)
+        rate, roam_time = xy_cover_single(env, cover_x, cover_y, nsteps, self_cover)
         rates.append(rate)
         times.append(roam_time)
-    return np.asarray(rates), np.asarray(min_roam_time)
+    return np.asarray(rates), np.asarray(times)
 
 
 def min_reach_time(env, cover, nsamples, nsteps, distance_th):
@@ -194,7 +190,7 @@ def main(args):
     # results["hit_time"]["xscale"] = 1
     #
     results["success"] = dict()
-    results["success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/success_rate", normalize=True, scale=10)
+    results["success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/success_rate", normalize=True, scale=20)
     results["success"]["xscale"] = 1
 
     results["hit time rate"] = dict()
@@ -202,16 +198,16 @@ def main(args):
     results["hit time rate"]["xscale"] = 1
 
     results["obs std"] = dict()
-    results["obs std"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="stats_o/std", normalize=True, scale=10)
+    results["obs std"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="stats_o/std", normalize=True, scale=20)
     results["obs std"]["xscale"] = 1
 
-    for k in [100, 300, 500, 700]:
+    for k in [500, 1000, 1500]:
         fmean = f"k: {k}, RT mean"
         fstd = f"k: {k}, RT std"
         results[f"{k}"] = dict()
         results[f"{k}"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name=fmean, normalize=False)
         results[f"{k}"]["std"] = parse_log(f"{log_directory}/log.txt", field_name=fstd, normalize=False)
-        results[f"{k}"]["xscale"] = 50
+        results[f"{k}"]["xscale"] = 100
     plot(results, log_directory)
 
 
