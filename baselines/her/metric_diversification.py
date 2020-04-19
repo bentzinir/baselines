@@ -110,7 +110,7 @@ class MetricDiversifier:
         return z
 
     @staticmethod
-    def quasimetric(a, b, d_func=None):
+    def quasimetric(a, a_feat, b, d_func=None):
         '''
         :param a: set of points
         :param b: set of points
@@ -120,7 +120,7 @@ class MetricDiversifier:
         if d_func is None:
             a2b_distance = np.linalg.norm(a - b, ord=2, axis=1)
         else:
-            _, Q = d_func(o=a, ag=None, g=b, compute_Q=True, use_target_net=True)
+            _, Q = d_func(o=a, ag=a_feat, g=b, compute_Q=True, use_target_net=True)
             a2b_distance = - Q.squeeze()
         return a2b_distance
 
@@ -177,9 +177,11 @@ class MetricDiversifier:
 
         set_x_mat = self._buffer_2_array(val='x', idxs=list(range(self.current_size)))
 
+        set_feat_mat = self._buffer_2_array(val='x_feat', idxs=list(range(self.current_size)))
+
         newpnt_feat_mat = np.repeat(np.expand_dims(new_pnt['x_feat'], 0), repeats=self.current_size, axis=0)
 
-        distances_to_new_pnt = self.quasimetric(a=set_x_mat, b=newpnt_feat_mat, d_func=d_func)
+        distances_to_new_pnt = self.quasimetric(a=set_x_mat, a_feat=set_feat_mat, b=newpnt_feat_mat, d_func=d_func)
 
         ##################################
         b_idx = -1
@@ -198,9 +200,11 @@ class MetricDiversifier:
             # update pairwise distance matrix
             newpnt_x_mat = np.repeat(np.expand_dims(new_pnt['x'], 0), repeats=self.current_size, axis=0)
 
+            newpnt_feat_mat = np.repeat(np.expand_dims(new_pnt['x_feat'], 0), repeats=self.current_size, axis=0)
+
             set_feat_mat = self._buffer_2_array(val='x_feat', idxs=list(range(self.current_size)))
 
-            self.M[b_idx] = self.quasimetric(a=newpnt_x_mat, b=set_feat_mat, d_func=d_func)
+            self.M[b_idx] = self.quasimetric(a=newpnt_x_mat, a_feat=newpnt_feat_mat, b=set_feat_mat, d_func=d_func)
 
             self.M[:, b_idx] = distances_to_new_pnt
 
@@ -212,15 +216,17 @@ class MetricDiversifier:
     def update_from(self, j, d_func):
         pnt = self.buffer[j]
         pnt_x_mat = np.repeat(np.expand_dims(pnt['x'], 0), repeats=self.current_size, axis=0)
+        pnt_feat_mat = np.repeat(np.expand_dims(pnt['x_feat'], 0), repeats=self.current_size, axis=0)
         set_feat_mat = self._buffer_2_array(val='x_feat', idxs=list(range(self.current_size)))
-        self.M[j] = self.quasimetric(a=pnt_x_mat, b=set_feat_mat, d_func=d_func)
+        self.M[j] = self.quasimetric(a=pnt_x_mat, a_feat=pnt_feat_mat, b=set_feat_mat, d_func=d_func)
         self.M[j, j] = np.inf
 
     def update_to(self, j, d_func):
         pnt = self.buffer[j]
         pnt_feat_mat = np.repeat(np.expand_dims(pnt['x_feat'], 0), repeats=self.current_size, axis=0)
         set_x_mat = self._buffer_2_array(val='x', idxs=list(range(self.current_size)))
-        self.M[:, j] = self.quasimetric(a=set_x_mat, b=pnt_feat_mat, d_func=d_func)
+        set_feat_mat = self._buffer_2_array(val='x_feat', idxs=list(range(self.current_size)))
+        self.M[:, j] = self.quasimetric(a=set_x_mat, a_feat=set_feat_mat, b=pnt_feat_mat, d_func=d_func)
         self.M[j, j] = np.inf
 
     def update_buffer(self, roam_time):
@@ -344,6 +350,8 @@ class MetricDiversifier:
 
     def _update_figure(self):
         pts = [self.buffer[idx]['x'][self.vis_coords] for idx in range(self.current_size)]
+        if len(pts) == 0:
+            return
         prop_pts = None
         if self.proposal and self.x_proposal['x'] is not None:
             prop_pts = [self.x_proposal['x'][self.vis_coords]]

@@ -8,15 +8,17 @@ from baselines.her.her_sampler import make_sample_her_transitions
 from baselines.bench.monitor import Monitor
 
 DEFAULT_ENV_PARAMS = {
+    'Flickers-v0': {
+        'n_cycles': 10,
+    },
     'FetchReach-v1': {
         'n_cycles': 10,
     },
-    'Flickers-v0': {
-        'n_cycles': 10,
-        'continuous': True,
+    'FetchReach10-v1': {
+        'n_cycles': 2,
     },
-    'FetchReach100-v1': {
-        'n_cycles': 10,
+    'FetchPush10-v1': {
+        'n_cycles': 2,
     },
     'HandReach-v0': {
         'n_cycles': 10,

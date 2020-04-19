@@ -13,8 +13,8 @@ import baselines.her.experiment.config as config
 from baselines.her.rollout import RolloutWorker
 from baselines.her.mca import MCA
 from baselines.her.metric_diversification import MetricDiversifier
-from baselines.her.cover_measure import mean_reach_time, min_reach_time
 from baselines.common.misc_util import set_default_value
+from baselines.her.cover_measure import xy_cover
 np.set_printoptions(precision=6)
 
 
@@ -119,7 +119,6 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
 
         if epoch % policy_save_interval == 0:
             for m in mca:
-                from baselines.her.cover_measure import xy_cover
                 hit_rate, roam_time = xy_cover(cover_measure_env, m.state_model.buffer, nsamples=50, nsteps=20)
                 # print(f"epoch: {epoch}, k: {m.state_model.k}, roam time: {roam_time.mean()}+- {roam_time.std()}")
                 logger.record_tabular(f'k: {m.state_model.k}, RT mean', roam_time.mean())
@@ -153,7 +152,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     seed=None,
     eval_env=None,
     replay_strategy='future',
-    policy_save_interval=100,
+    policy_save_interval=20,
     clip_return=True,
     demo_file=None,
     override_params=None,
@@ -279,7 +278,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     phase_length = n_cycles * rollout_worker.T * mca_rw.rollout_batch_size * load_p
 
     mca = []
-    for kidx, k in enumerate([50, 100, 150]):
+    for kidx, k in enumerate([100, 200, 400]):
         mca_state_model = MetricDiversifier(k=k,
                                             reward_fun=reward_fun,
                                             vis=True,
