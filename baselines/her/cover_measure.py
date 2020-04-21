@@ -201,13 +201,13 @@ def main(args):
     results["obs std"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="stats_o/std", normalize=True, scale=20)
     results["obs std"]["xscale"] = 1
 
-    for k in [100, 200, 400]:
+    for k in [100, 300, 500, 700]:
         fmean = f"k: {k}, RT mean"
         fstd = f"k: {k}, RT std"
         results[f"{k}"] = dict()
         results[f"{k}"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name=fmean, normalize=False)
         results[f"{k}"]["std"] = parse_log(f"{log_directory}/log.txt", field_name=fstd, normalize=False)
-        results[f"{k}"]["xscale"] = 20
+        results[f"{k}"]["xscale"] = 50
     plot(results, log_directory)
 
 
