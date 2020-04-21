@@ -73,7 +73,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         rollout_worker.clear_history()
         mca[0].rollout_worker.clear_history()
         for n1 in range(n_cycles):
-            # random = (n1 % 999) == 0
+            random = n1 == 0
             episode = rollout_worker.generate_rollouts()
 
             # mca.store_ex_episode(episode)
@@ -83,12 +83,11 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
                 for l in range(len(ex_inits_a)):
                     ex_inits_a[l]["g"] = ex_inits_b[l]["g"]
             mca_episode = mca[0].rollout_worker.generate_rollouts(ex_init=ex_inits_a,
-                                                                  random=random_cover or not trainable)
+                                                                  random=random_cover or random or not trainable)
 
             # mca.load_episode(mca_episode)
-            # PAL
-            for _ in range(10):
-                [m.update_metric_model() for m in mca]
+            if n1 % 5 == 0:
+                mca[np.random.randint(len(mca))].update_metric_model()
 
             if not trainable:
                 continue
@@ -153,7 +152,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     seed=None,
     eval_env=None,
     replay_strategy='future',
-    policy_save_interval=20,
+    policy_save_interval=50,
     clip_return=True,
     demo_file=None,
     override_params=None,
@@ -291,7 +290,7 @@ def learn(*, network, env, mca_env, total_timesteps,
                                            )
 
     mca = []
-    for kidx, k in enumerate([100, 200, 400]):
+    for kidx, k in enumerate([100, 300, 500, 700]):
         mca_state_model = MetricDiversifier(k=k,
                                             reward_fun=reward_fun,
                                             vis=True,
