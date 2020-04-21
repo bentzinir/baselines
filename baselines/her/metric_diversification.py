@@ -59,7 +59,7 @@ class VisObserver:
 
 
 class MetricDiversifier:
-    def __init__(self, k, reward_fun, random_cover=False, load_p=1, vis=False, vis_coords=None, load_model=None,
+    def __init__(self, k, reward_fun=None, random_cover=False, load_p=1, vis=False, vis_coords=None, load_model=None,
                  phase_length=1000, dilute_at_goal=False, save_path=None, **kwargs):
         if random_cover:
             self.kmin = k

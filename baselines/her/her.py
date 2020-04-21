@@ -58,7 +58,7 @@ def mpi_average(value):
 
 
 def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
-          save_path, demo_file, mca, random_cover=False, trainable=True, cover_measure_env=None, **kwargs):
+          save_path, demo_file, mca, random_cover=False, trainable=True, cover_measure_env=None, state_model_vec=None, **kwargs):
     rank = MPI.COMM_WORLD.Get_rank()
 
     logger.info("Training...")
@@ -86,8 +86,9 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
                                                                   random=random_cover or not trainable)
 
             # mca.load_episode(mca_episode)
-            if n1 % 1 == 0:
-                mca[np.random.randint(len(mca))].update_metric_model()
+            # PAL
+            for _ in range(10):
+                [m.update_metric_model() for m in mca]
 
             if not trainable:
                 continue
@@ -277,6 +278,18 @@ def learn(*, network, env, mca_env, total_timesteps,
     load_p = 1
     phase_length = n_cycles * rollout_worker.T * mca_rw.rollout_batch_size * load_p
 
+    from baselines.her.state_model_vec import make_state_model_vec
+    state_model_vec = make_state_model_vec(k_vec=[100, 200, 400],
+                                           vis=True,
+                                           vis_coords=coord_dict['vis'],
+                                           load_path=kwargs['load_mca_path'],
+                                           log_path=log_path,
+                                           random_cover=kwargs["random_cover"],
+                                           load_prob=load_p,
+                                           phase_length=phase_length,
+                                           dilute_at_goal=kwargs['dilute_at_goal']
+                                           )
+
     mca = []
     for kidx, k in enumerate([100, 200, 400]):
         mca_state_model = MetricDiversifier(k=k,
@@ -319,6 +332,7 @@ def learn(*, network, env, mca_env, total_timesteps,
                  random_cover=kwargs['random_cover'],
                  trainable=trainable,
                  cover_measure_env=kwargs['cover_measure_env'],
+                 state_model_vec=state_model_vec
                  )
 
 
