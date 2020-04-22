@@ -182,16 +182,17 @@ class RolloutWorker:
             episode['info_{}'.format(key)] = value
 
         # stats
-        if self.exploration in ['go_explore', 'go']:
-            successful = np.asarray([1 if hit is not None else 0 for hit in hit_time])
-        else:
-            successful = np.array(successes)[-1, :]
-        assert successful.shape == (self.rollout_batch_size,)
-        success_rate = np.mean(successful)
-        self.success_history.append(success_rate)
+        if self.exploration != 'fixed_random':
+            if self.exploration in ['go_explore', 'go']:
+                successful = np.asarray([1 if hit is not None else 0 for hit in hit_time])
+            elif self.exploration in ['eps_greedy']:
+                successful = np.array(successes)[-1, :]
+            assert successful.shape == (self.rollout_batch_size,)
+            success_rate = np.mean(successful)
+            self.success_history.append(success_rate)
 
-        mean_hit_time = np.asarray([hit if hit is not None else -1 for hit in hit_time])
-        self.hit_time_history.append(mean_hit_time)
+            mean_hit_time = np.asarray([hit if hit is not None else -1 for hit in hit_time])
+            self.hit_time_history.append(mean_hit_time)
 
         if self.compute_Q:
             self.Q_history.append(np.mean(Qs))

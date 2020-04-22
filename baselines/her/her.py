@@ -73,7 +73,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         rollout_worker.clear_history()
         mca[0].rollout_worker.clear_history()
         for n1 in range(n_cycles):
-            random = n1 == 0
+            random = n1 % 10 == 0
             episode = rollout_worker.generate_rollouts()
 
             # mca.store_ex_episode(episode)
@@ -86,8 +86,9 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
                                                                   random=random_cover or random or not trainable)
 
             # mca.load_episode(mca_episode)
-            if n1 % 5 == 0:
-                mca[np.random.randint(len(mca))].update_metric_model()
+            if n1 % 20 == 0:
+                # mca[np.random.randint(len(mca))].update_metric_model()
+                [m.update_metric_model() for m in mca]
 
             if not trainable:
                 continue
@@ -119,7 +120,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
 
         if epoch % policy_save_interval == 0:
             for m in mca:
-                hit_rate, roam_time = xy_cover(cover_measure_env, m.state_model.buffer, nsamples=50, nsteps=20)
+                hit_rate, roam_time = xy_cover(cover_measure_env, m.state_model.buffer, nsamples=1, nsteps=20)
                 # print(f"epoch: {epoch}, k: {m.state_model.k}, roam time: {roam_time.mean()}+- {roam_time.std()}")
                 logger.record_tabular(f'k: {m.state_model.k}, RT mean', roam_time.mean())
                 logger.record_tabular(f'k: {m.state_model.k}, RT std', roam_time.std())

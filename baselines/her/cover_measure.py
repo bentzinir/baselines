@@ -185,13 +185,14 @@ def main(args):
     log_directory = extra_args["load"]
 
     results = dict()
-    # results["hit_time"] = dict()
-    # results["hit_time"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=True)
-    # results["hit_time"]["xscale"] = 1
-    #
-    results["success"] = dict()
-    results["success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/success_rate", normalize=True, scale=20)
-    results["success"]["xscale"] = 1
+
+    results["test success"] = dict()
+    results["test success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/success_rate", normalize=True, scale=20)
+    results["test success"]["xscale"] = 1
+
+    results["train success"] = dict()
+    results["train success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="train/success_rate", normalize=True, scale=20)
+    results["train success"]["xscale"] = 1
 
     results["hit time rate"] = dict()
     results["hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=False)
