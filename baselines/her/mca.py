@@ -20,6 +20,18 @@ class MCA:
         if vis_obs:
             self.visualizer = VisObserver()
 
+    def buffer_draw(self, n):
+        batch = self.policy.buffer.sample(100)
+        p = np.random.permutation(n)
+        goals = [batch['ag'][pidx] for pidx in p]
+        inits = []
+        for o, ag, qpos, qvel, g in zip(batch['o'], batch['ag'], batch['qpos'], batch['qvel'], goals):
+            inits.append({'x': o,
+                          'qpos': qpos,
+                          'qvel': qvel,
+                          'g': g})
+        return inits
+
     def update_metric_model(self):
         if self.policy.buffer.current_size == 0:
             return

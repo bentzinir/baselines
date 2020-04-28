@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import os
 import json
 import copy
+import random
 
 
 class Bunch(object):
@@ -194,6 +195,12 @@ class MetricDiversifier:
                 b_delta = delta_j
                 b_idx = j
         ##################################
+
+        # FORCED UPDATE
+        if b_idx == -1:
+            if np.random.binomial(n=1, p=0.01):
+                b_idx = random.choice(range(self.current_size))
+                # print(f"Forced update")
 
         if b_idx >= 0:
 

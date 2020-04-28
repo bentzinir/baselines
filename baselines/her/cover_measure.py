@@ -174,6 +174,7 @@ def parse_log(logfile, field_name, normalize=False, scale=1):
         if normalize:
             values = (values - values.min())
             values = values / values.max()
+        if scale:
             values *= scale
     return values
 
@@ -187,19 +188,19 @@ def main(args):
     results = dict()
 
     results["test success"] = dict()
-    results["test success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/success_rate", normalize=True, scale=20)
+    results["test success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/success_rate", normalize=False, scale=100)
     results["test success"]["xscale"] = 1
 
     results["train success"] = dict()
-    results["train success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="train/success_rate", normalize=True, scale=20)
+    results["train success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="train/success_rate", normalize=False, scale=100)
     results["train success"]["xscale"] = 1
 
     results["hit time rate"] = dict()
-    results["hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=False)
+    results["hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=False, scale=10)
     results["hit time rate"]["xscale"] = 1
 
     results["obs std"] = dict()
-    results["obs std"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="stats_o/std", normalize=True, scale=20)
+    results["obs std"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="stats_o/std", normalize=True, scale=50)
     results["obs std"]["xscale"] = 1
 
     for k in [100, 300, 500, 700]:

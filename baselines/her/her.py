@@ -74,6 +74,11 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         mca[0].rollout_worker.clear_history()
         for n1 in range(n_cycles):
             random = n1 % 10 == 0
+            # current_success_rate = mpi_average(mca[0].evaluator.current_success_rate())
+            # if current_success_rate > 0.9 and n1 % 10 == 0:
+            #     random = True
+            # else:
+            #     random = False
             episode = rollout_worker.generate_rollouts()
 
             # mca.store_ex_episode(episode)
@@ -82,6 +87,10 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             if ex_inits_a and ex_inits_b:
                 for l in range(len(ex_inits_a)):
                     ex_inits_a[l]["g"] = ex_inits_b[l]["g"]
+            # sample uniformly from replay buffer (and not from state model) with some probability
+            if np.random.binomial(n=1, p=0.5):
+                ex_inits_a = mca[0].buffer_draw(n_mca_envs)
+
             mca_episode = mca[0].rollout_worker.generate_rollouts(ex_init=ex_inits_a,
                                                                   random=random_cover or random or not trainable)
 
