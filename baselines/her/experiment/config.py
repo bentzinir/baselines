@@ -35,6 +35,12 @@ DEFAULT_ENV_PARAMS = {
     'HandManipulateBlock10-v0': {
         'n_cycles': 2,
     },
+    'Reacher10-v2': {
+        'n_cycles': 2,
+    },
+    'Reacher20-v2': {
+        'n_cycles': 50,
+    },
 }
 
 

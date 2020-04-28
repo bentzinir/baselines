@@ -99,7 +99,8 @@ def train(args, extra_args):
                                video_length=args.save_video_length)
 
     # create non-vectorized environment for evaluating cover distance
-    alg_kwargs['cover_measure_env'] = gym.make(env_id, distance_threshold=alg_kwargs['cover_distance_threshold'])
+    alg_kwargs['cover_measure_env'] = gym.make(env_id, distance_threshold=alg_kwargs['cover_distance_threshold'],
+                                               mode=alg_kwargs['mode'])
 
     if args.network:
         alg_kwargs['network'] = args.network
@@ -153,8 +154,9 @@ def build_env(args, extra_args=None):
                            env_kwargs=extra_args
                            )
 
-        if env_type == 'mujoco':
-            env = VecNormalize(env, use_tf=True)
+        # TODO: add back after debug
+        # if env_type == 'mujoco':
+        #     env = VecNormalize(env, use_tf=True)
 
     return env
 
