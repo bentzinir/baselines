@@ -1,0 +1,20 @@
+MuJoCo Pro Personal license activation key, number 71563, type 6.
+
+Issued to Nir Baram <nirb@campus.technion.ac.il>.
+
+Expires April 6, 2021.
+
+This file activates MuJoCo Pro on a single computer with id:
+LINUX_nAs_NSB9VR8TSSE0X638g0a0u1ODS25mHFA105
+
+Do not modify this file. Its entire content, including the
+plain text section, is used by the activation manager.
+
+a5a845e0abb25d459eb41b829b81cc42772d30ffb6900b6076b3db898e3bec6c
+c67bd2f138ef783a87db61cb57f1572d15a4361701f7209c9d54fbbf5c3d47df
+f17e25eed05872ad5db468a5a40df4cd07cea79f2d2467ce585791c1992bdb60
+a09aa6850c56511f4e79125864313c881ab833f6921f10906cdc523eeb634655
+8c814899cf583b8a51e72bbb9d4c4c1e9ba0ec2bead0c7799cd16c5f1a692188
+7e9ba0e677ca65b2763ca9552f50c3b3b4e62adcb4bb6a9418407aa766e725f2
+520adbd8dfa21e00d86b7166f9a00fc4bf0e05bd077ce73e97924e3b930031f6
+f32afc954d90ef04a95958b64ce0d5dbae39805bf2647bfdd85264f99b64f993
