@@ -198,7 +198,7 @@ class MetricDiversifier:
 
         # FORCED UPDATE
         if b_idx == -1:
-            if np.random.binomial(n=1, p=0.01):
+            if np.random.binomial(n=1, p=0.001):
                 b_idx = random.choice(range(self.current_size))
                 # print(f"Forced update")
 

@@ -21,6 +21,8 @@ class MCA:
             self.visualizer = VisObserver()
 
     def buffer_draw(self, n):
+        if self.policy.buffer.current_size == 0:
+            return
         batch = self.policy.buffer.sample(100)
         p = np.random.permutation(n)
         goals = [batch['ag'][pidx] for pidx in p]
