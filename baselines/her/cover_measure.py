@@ -199,9 +199,13 @@ def main(args):
     results["hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=False, scale=10)
     results["hit time rate"]["xscale"] = 1
 
-    results["obs std"] = dict()
-    results["obs std"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="stats_o/std", normalize=True, scale=50)
-    results["obs std"]["xscale"] = 1
+    results["goal std"] = dict()
+    results["goal std"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="stats_g/std", normalize=False, scale=300)
+    results["goal std"]["xscale"] = 1
+
+    results["Q"] = dict()
+    results["Q"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/mean_Q", normalize=False, scale=1)
+    results["Q"]["xscale"] = 1
 
     for k in [100, 300, 500, 700]:
         fmean = f"k: {k}, RT mean"
@@ -209,7 +213,7 @@ def main(args):
         results[f"{k}"] = dict()
         results[f"{k}"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name=fmean, normalize=False)
         results[f"{k}"]["std"] = parse_log(f"{log_directory}/log.txt", field_name=fstd, normalize=False)
-        results[f"{k}"]["xscale"] = 50
+        results[f"{k}"]["xscale"] = 100
     plot(results, log_directory)
 
 

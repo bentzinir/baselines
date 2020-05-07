@@ -35,6 +35,15 @@ DEFAULT_ENV_PARAMS = {
     'HandManipulateBlock10-v0': {
         'n_cycles': 2,
     },
+    'Swimmer10-v2': {
+        'n_cycles': 2,
+    },
+    'Swimmer50-v2': {
+        'n_cycles': 50,
+    },
+    'Swimmer100-v2': {
+        'n_cycles': 50,
+    },
 }
 
 

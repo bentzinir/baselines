@@ -74,24 +74,22 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         mca[0].rollout_worker.clear_history()
         for n1 in range(n_cycles):
             random = n1 % 10 == 0
-            # current_success_rate = mpi_average(mca[0].evaluator.current_success_rate())
-            # if current_success_rate > 0.9 and n1 % 10 == 0:
-            #     random = True
-            # else:
-            #     random = False
             episode = rollout_worker.generate_rollouts()
 
             # mca.store_ex_episode(episode)
-            ex_inits_a = mca[np.random.randint(len(mca))].state_model.draw(n_mca_envs)
-            ex_inits_b = mca[np.random.randint(len(mca))].state_model.draw(n_mca_envs)
-            if ex_inits_a and ex_inits_b:
-                for l in range(len(ex_inits_a)):
-                    ex_inits_a[l]["g"] = ex_inits_b[l]["g"]
-            # sample uniformly from replay buffer (and not from state model) with some probability
-            if np.random.binomial(n=1, p=0.5):
-                ex_inits_a = mca[0].buffer_draw(n_mca_envs)
 
-            mca_episode = mca[0].rollout_worker.generate_rollouts(ex_init=ex_inits_a,
+            # sample either from the small and diverse state model or from the larger replay buffer
+            if np.random.binomial(n=1, p=0.5):
+                ex_inits = mca[np.random.randint(len(mca))].state_model.draw(n_mca_envs)
+                ex_inits_g = mca[np.random.randint(len(mca))].state_model.draw(n_mca_envs)
+                if ex_inits and ex_inits_g:
+                    for l in range(len(ex_inits)):
+                        ex_inits[l]["g"] = ex_inits_g[l]["g"]
+
+            else:
+                ex_inits = mca[0].init_from_buffer(n_mca_envs)
+
+            mca_episode = mca[0].rollout_worker.generate_rollouts(ex_init=ex_inits,
                                                                   random=random_cover or random or not trainable)
 
             # mca.load_episode(mca_episode)
@@ -274,6 +272,8 @@ def learn(*, network, env, mca_env, total_timesteps,
     ss = set_default_value(kwargs, 'ss', False)
     sharing = set_default_value(kwargs, 'sharing', False)
     trainable = set_default_value(kwargs, 'trainable', True)
+    random_cover = set_default_value(kwargs, 'random_cover', False)
+    dilute_at_goal = set_default_value(kwargs, 'dilute_at_goal', False)
 
     mca_policy, mca_rw, mca_evaluator, mca_params, coord_dict, reward_fun = prepare_agent(mca_env, eval_env,
                                                                                           active=mca_active,
@@ -287,17 +287,17 @@ def learn(*, network, env, mca_env, total_timesteps,
     load_p = 1
     phase_length = n_cycles * rollout_worker.T * mca_rw.rollout_batch_size * load_p
 
-    from baselines.her.state_model_vec import make_state_model_vec
-    state_model_vec = make_state_model_vec(k_vec=[100, 200, 400],
-                                           vis=True,
-                                           vis_coords=coord_dict['vis'],
-                                           load_path=kwargs['load_mca_path'],
-                                           log_path=log_path,
-                                           random_cover=kwargs["random_cover"],
-                                           load_prob=load_p,
-                                           phase_length=phase_length,
-                                           dilute_at_goal=kwargs['dilute_at_goal']
-                                           )
+    # from baselines.her.state_model_vec import make_state_model_vec
+    # state_model_vec = make_state_model_vec(k_vec=[100, 200, 400],
+    #                                        vis=True,
+    #                                        vis_coords=coord_dict['vis'],
+    #                                        load_path=kwargs['load_mca_path'],
+    #                                        log_path=log_path,
+    #                                        random_cover=kwargs["random_cover"],
+    #                                        load_prob=load_p,
+    #                                        phase_length=phase_length,
+    #                                        dilute_at_goal=kwargs['dilute_at_goal']
+    #                                        )
 
     mca = []
     for kidx, k in enumerate([100, 300, 500, 700]):
@@ -307,10 +307,10 @@ def learn(*, network, env, mca_env, total_timesteps,
                                             vis_coords=coord_dict['vis'],
                                             load_model=kwargs['load_mca_path'],
                                             save_path=f"{log_path}/{k}/mca_cover",
-                                            random_cover=kwargs["random_cover"],
+                                            random_cover=random_cover,
                                             load_p=load_p,
                                             phase_length=phase_length,
-                                            dilute_at_goal=kwargs['dilute_at_goal'])
+                                            dilute_at_goal=dilute_at_goal)
 
         mca.append(MCA(policy=mca_policy,
                        rollout_worker=mca_rw,
@@ -338,10 +338,10 @@ def learn(*, network, env, mca_env, total_timesteps,
                  policy_save_interval=policy_save_interval,
                  demo_file=demo_file,
                  mca=mca,
-                 random_cover=kwargs['random_cover'],
+                 random_cover=random_cover,
                  trainable=trainable,
                  cover_measure_env=kwargs['cover_measure_env'],
-                 state_model_vec=state_model_vec
+                 # state_model_vec=state_model_vec
                  )
 
 
