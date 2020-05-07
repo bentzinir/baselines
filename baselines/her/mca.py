@@ -16,24 +16,9 @@ class MCA:
         self.ex_experience = None
         self.coord_dict = coord_dict
         self.tmp_point = state_model.init_record()
-        # self.n_samples = n_samples
         if vis_obs:
             self.visualizer = VisObserver()
 
-    # def replay_buffer_sample(self, n, valids_only=True):
-    #     if not valids_only:
-    #         return self.policy.buffer.sample(n)
-    #     else:
-    #         pnts = []
-    #         while len(pnts) < n:
-    #             pnt = self.policy.buffer.sample(1)
-    #             if pnt['info_valid']:
-    #                 pnts.append(pnt)
-    #         z = dict()
-    #         for key in pnts[0].keys():
-    #             z[key] = np.asarray([pnt[key][0] for pnt in pnts])
-    #         return z
-    #
     # def _buffer_sample(self, n, **kwargs):
     #     if self.policy.buffer.current_size == 0:
     #         return
@@ -48,10 +33,28 @@ class MCA:
     #                       'g': pnts['ag'][1]})
     #     return inits
 
+    @staticmethod
+    def sample_2_dict(x):
+        z = dict()
+        for key in x[0].keys():
+            z[key] = np.asarray([pnt[key][0] for pnt in x])
+        return z
+
+    def sample_from_buffer(self, n, valids_only=True):
+        if not valids_only:
+            return self.policy.buffer.sample(n)
+        else:
+            pnts = []
+            while len(pnts) < n:
+                pnt = self.policy.buffer.sample(1)
+                if pnt['info_valid']:
+                    pnts.append(pnt)
+            return self.sample_2_dict(pnts)
+
     def init_from_buffer(self, n):
         if self.policy.buffer.current_size == 0:
             return
-        batch = self.policy.buffer.sample(n)
+        batch = self.sample_from_buffer(n, valids_only=True)
         p = np.random.permutation(n)
         goals = [batch['ag'][pidx] for pidx in p]
         inits = []
