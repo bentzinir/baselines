@@ -44,6 +44,9 @@ DEFAULT_ENV_PARAMS = {
     'Swimmer100-v2': {
         'n_cycles': 50,
     },
+    'Ant10-v2': {
+        'n_cycles': 2,
+    },
 }
 
 
