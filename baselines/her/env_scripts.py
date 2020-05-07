@@ -7,7 +7,15 @@ import gym
 import numpy as np
 import random
 import time
+from baselines.her.experiment import config
+from baselines.common import tf_util
+import copy
 np.set_printoptions(precision=4)
+
+
+def set_goal(env, cover):
+    pnt = cover[random.choice(range(len(cover)))]
+    return env.set_goal(goal=pnt['x_feat'])
 
 
 def reset_env(env, mode='intrinsic', cover_path=None):
@@ -58,6 +66,34 @@ def plain_loop(env, action_repetition=1, **kwargs):
     env.close()
 
 
+def play_policy(env, env_id, load_path=None, cover_path=None, **kwargs):
+    params = config.DEFAULT_PARAMS
+    _override_params = copy.deepcopy(kwargs)
+    params.update(**_override_params)
+    params['env_name'] = env_id
+    params = config.prepare_params(params)
+    dims, coord_dict = config.configure_dims(params)
+    params['ddpg_params']['scope'] = "mca"
+    policy, reward_fun = config.configure_ddpg(dims=dims, params=params, active=True, clip_return=True)
+    tf_util.load_variables(load_path)
+    print(f"Loaded model: {load_path}")
+    cover = MetricDiversifier.load_model(cover_path)
+    obs = reset_env(env, mode='intrinsic')
+    for i in range(100000):
+        print(i)
+        env.render()
+        time.sleep(.001)
+        action, _, state, _ = policy.step(obs)
+        if i % 10 == 0:
+            action = env.action_space.sample()
+        obs, reward, done, info = env.step(action)
+        if reward:
+            input("Reward")
+        if i % 1000 == 0 or info['is_success']:
+            obs = set_goal(env, cover)
+    env.close()
+
+
 if __name__ == '__main__':
     arg_parser = common_arg_parser()
     args, unknown_args = arg_parser.parse_known_args(sys.argv)
@@ -67,3 +103,7 @@ if __name__ == '__main__':
         scan_cover(environment, **extra_args)
     elif extra_args['option'] == 'plain_loop':
         plain_loop(environment, **extra_args)
+    elif extra_args['option'] == 'play_policy':
+        assert extra_args['load_path'] is not None
+        assert extra_args['cover_path'] is not None
+        play_policy(environment, args.env, **extra_args)
