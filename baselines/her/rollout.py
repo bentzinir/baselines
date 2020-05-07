@@ -86,7 +86,7 @@ class RolloutWorker:
         hit_time = [None] * num_envs
 
         if random:
-            self.exploration = 'fixed_random'
+            self.exploration = 'random'
         else:
             self.exploration = 'eps_greedy'  # 'go'
 
@@ -182,7 +182,7 @@ class RolloutWorker:
             episode['info_{}'.format(key)] = value
 
         # stats
-        if self.exploration != 'fixed_random':
+        if self.exploration != 'random':
             if self.exploration in ['go_explore', 'go']:
                 successful = np.asarray([1 if hit is not None else 0 for hit in hit_time])
             elif self.exploration in ['eps_greedy']:
