@@ -41,6 +41,8 @@ class MCA:
         return z
 
     def sample_from_buffer(self, n, valids_only=True):
+        if self.policy.buffer.current_size == 0:
+            return
         if not valids_only:
             return self.policy.buffer.sample(n)
         else:
@@ -52,9 +54,9 @@ class MCA:
             return self.sample_2_dict(pnts)
 
     def init_from_buffer(self, n):
-        if self.policy.buffer.current_size == 0:
-            return
         batch = self.sample_from_buffer(n, valids_only=True)
+        if batch is None:
+            return
         p = np.random.permutation(n)
         goals = [batch['ag'][pidx] for pidx in p]
         inits = []
@@ -66,10 +68,10 @@ class MCA:
         return inits
 
     def update_metric_model(self):
-        if self.policy.buffer.current_size == 0:
-            return
         # batch = self.policy.buffer.sample(100)
         batch = self.sample_from_buffer(100, valids_only=True)
+        if batch is None:
+            return
         for o, ag, qpos, qvel in zip(batch['o'], batch['ag'], batch['qpos'], batch['qvel']):
             new_point = self.state_model.init_record(x=o, x_feat=ag, qpos=qpos, qvel=qvel)
             self.state_model.load_new_point(new_point, d_func=self.policy.get_actions)

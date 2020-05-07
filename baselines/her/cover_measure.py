@@ -213,7 +213,7 @@ def main(args):
         results[f"{k}"] = dict()
         results[f"{k}"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name=fmean, normalize=False)
         results[f"{k}"]["std"] = parse_log(f"{log_directory}/log.txt", field_name=fstd, normalize=False)
-        results[f"{k}"]["xscale"] = 100
+        results[f"{k}"]["xscale"] = 50
     plot(results, log_directory)
 
 
