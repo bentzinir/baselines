@@ -68,7 +68,8 @@ class MCA:
     def update_metric_model(self):
         if self.policy.buffer.current_size == 0:
             return
-        batch = self.policy.buffer.sample(100)
+        # batch = self.policy.buffer.sample(100)
+        batch = self.sample_from_buffer(100, valids_only=True)
         for o, ag, qpos, qvel in zip(batch['o'], batch['ag'], batch['qpos'], batch['qvel']):
             new_point = self.state_model.init_record(x=o, x_feat=ag, qpos=qpos, qvel=qvel)
             self.state_model.load_new_point(new_point, d_func=self.policy.get_actions)
