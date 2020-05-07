@@ -20,8 +20,38 @@ class MCA:
         if vis_obs:
             self.visualizer = VisObserver()
 
-    def buffer_draw(self, n):
-        batch = self.policy.buffer.sample(100)
+    # def replay_buffer_sample(self, n, valids_only=True):
+    #     if not valids_only:
+    #         return self.policy.buffer.sample(n)
+    #     else:
+    #         pnts = []
+    #         while len(pnts) < n:
+    #             pnt = self.policy.buffer.sample(1)
+    #             if pnt['info_valid']:
+    #                 pnts.append(pnt)
+    #         z = dict()
+    #         for key in pnts[0].keys():
+    #             z[key] = np.asarray([pnt[key][0] for pnt in pnts])
+    #         return z
+    #
+    # def _buffer_sample(self, n, **kwargs):
+    #     if self.policy.buffer.current_size == 0:
+    #         return
+    #     inits = []
+    #     while len(inits) < n:
+    #         pnts = self.policy.buffer.sample(2)
+    #         if np.any(pnts['info_valid'] == 0):
+    #             continue
+    #         inits.append({'x': pnts['o'][0],
+    #                       'qpos': pnts['qpos'][0],
+    #                       'qvel': pnts['qvel'][0],
+    #                       'g': pnts['ag'][1]})
+    #     return inits
+
+    def init_from_buffer(self, n):
+        if self.policy.buffer.current_size == 0:
+            return
+        batch = self.policy.buffer.sample(n)
         p = np.random.permutation(n)
         goals = [batch['ag'][pidx] for pidx in p]
         inits = []
