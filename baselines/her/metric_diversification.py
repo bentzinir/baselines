@@ -407,6 +407,8 @@ class MetricDiversifier:
 
     @staticmethod
     def load_model(load_path):
+        if load_path is None:
+            return
         if not os.path.exists(load_path):
             return None
         with open(load_path, 'r') as infile:

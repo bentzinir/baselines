@@ -196,11 +196,11 @@ def main(args):
     results["train success"]["xscale"] = 1
 
     results["hit time rate"] = dict()
-    results["hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=False, scale=10)
+    results["hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=False, scale=2)
     results["hit time rate"]["xscale"] = 1
 
     results["goal std"] = dict()
-    results["goal std"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="stats_g/std", normalize=False, scale=300)
+    results["goal std"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="stats_g/std", normalize=False, scale=100)
     results["goal std"]["xscale"] = 1
 
     results["Q"] = dict()
@@ -213,7 +213,7 @@ def main(args):
         results[f"{k}"] = dict()
         results[f"{k}"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name=fmean, normalize=False)
         results[f"{k}"]["std"] = parse_log(f"{log_directory}/log.txt", field_name=fstd, normalize=False)
-        results[f"{k}"]["xscale"] = 100
+        results[f"{k}"]["xscale"] = 50
     plot(results, log_directory)
 
 

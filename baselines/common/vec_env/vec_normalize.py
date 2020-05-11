@@ -1,5 +1,6 @@
 from . import VecEnvWrapper
 import numpy as np
+import gym
 
 class VecNormalize(VecEnvWrapper):
     """
@@ -9,13 +10,16 @@ class VecNormalize(VecEnvWrapper):
 
     def __init__(self, venv, ob=True, ret=True, clipob=10., cliprew=10., gamma=0.99, epsilon=1e-8, use_tf=False):
         VecEnvWrapper.__init__(self, venv)
+        obs_shape = self.observation_space.shape
+        if type(self.observation_space) is gym.spaces.dict.Dict:
+            obs_shape = self.observation_space["observation"].shape
         if use_tf:
             from baselines.common.running_mean_std import TfRunningMeanStd
-            self.ob_rms = TfRunningMeanStd(shape=self.observation_space.shape, scope='ob_rms') if ob else None
+            self.ob_rms = TfRunningMeanStd(shape=obs_shape, scope='ob_rms') if ob else None
             self.ret_rms = TfRunningMeanStd(shape=(), scope='ret_rms') if ret else None
         else:
             from baselines.common.running_mean_std import RunningMeanStd
-            self.ob_rms = RunningMeanStd(shape=self.observation_space.shape) if ob else None
+            self.ob_rms = RunningMeanStd(shape=obs_shape) if ob else None
             self.ret_rms = RunningMeanStd(shape=()) if ret else None
         self.clipob = clipob
         self.cliprew = cliprew
@@ -34,14 +38,19 @@ class VecNormalize(VecEnvWrapper):
         return obs, rews, news, infos
 
     def _obfilt(self, obs):
+        def filt(val):
+            self.ob_rms.update(val)
+            return np.clip((val - self.ob_rms.mean) / np.sqrt(self.ob_rms.var + self.epsilon), -self.clipob, self.clipob)
         if self.ob_rms:
-            self.ob_rms.update(obs)
-            obs = np.clip((obs - self.ob_rms.mean) / np.sqrt(self.ob_rms.var + self.epsilon), -self.clipob, self.clipob)
+            if type(obs) is dict:
+                obs["observation"] = filt(obs["observation"])
+            else:
+                obs = filt(obs)
             return obs
         else:
             return obs
 
-    def reset(self):
+    def reset(self, ex_inits=None):
         self.ret = np.zeros(self.num_envs)
-        obs = self.venv.reset()
+        obs = self.venv.reset(ex_inits=ex_inits)
         return self._obfilt(obs)

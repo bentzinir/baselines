@@ -66,6 +66,8 @@ class TfRunningMeanStd(object):
         self.mean, self.var, self.count = self.sess.run([self._mean, self._var, self._count])
 
     def update(self, x):
+        if type(x) is dict:
+            x = x["observation"]
         batch_mean = np.mean(x, axis=0)
         batch_var = np.var(x, axis=0)
         batch_count = x.shape[0]

@@ -14,16 +14,17 @@ np.set_printoptions(precision=4)
 
 
 def set_goal(env, cover):
+    if cover is None:
+        return env.reset()
     pnt = cover[random.choice(range(len(cover)))]
     return env.set_goal(goal=pnt['x_feat'])
 
 
-def reset_env(env, mode='intrinsic', cover_path=None):
+def reset_env(env, cover, mode='intrinsic'):
     if mode == 'intrinsic':
         return env.reset()
     elif mode == 'extrinsic':
         assert 'cover_path' is not None, 'missing cover path argument'
-        cover = MetricDiversifier.load_model(cover_path)
         idxs = list(range(len(cover)))
         # idxs = [352, 630]
         obs = init_from_point(env, cover[random.choice(idxs)])
@@ -41,28 +42,30 @@ def scan_cover(env, action_repetition=1, **kwargs):
     reset_env(env, mode='intrinsic')
     for i in range(100000):
         env.render()
-        time.sleep(2)
+        time.sleep(0.1)
         if i % action_repetition == 0:
             a = env.action_space.sample()
         obs, reward, done, info = env.step(a)
-        if i % 1 == 0:
+        if i % 10 == 0:
             ob = reset_env(env, mode='extrinsic', cover_path=kwargs['cover_path'])
             # print(np.linalg.norm(ob["qvel"]))
+            time.sleep(2)
     env.close()
 
 
-def plain_loop(env, action_repetition=1, **kwargs):
-    reset_env(env, mode='intrinsic')
+def plain_loop(env, action_repetition=1, clip_range=0.5, **kwargs):
+    reset_env(env, cover=None, mode='intrinsic')
     for i in range(100000):
         env.render()
-        time.sleep(.01)
+        time.sleep(.03)
         if i % action_repetition == 0:
-            a = env.action_space.sample()
-            # a = np.array([-0.9639, -0.5384])
-        obs, reward, done, info = env.step(a)
-
+            a = np.clip(env.action_space.sample(), -clip_range, clip_range)
+        o, r, d, info = env.step(a)
+        if r:
+            input("Success")
         if i % 100 == 0:
-            reset_env(env, mode='intrinsic')
+            reset_env(env, cover=None, mode='intrinsic')
+            print(f"Reset")
     env.close()
 
 
@@ -78,19 +81,24 @@ def play_policy(env, env_id, load_path=None, cover_path=None, **kwargs):
     tf_util.load_variables(load_path)
     print(f"Loaded model: {load_path}")
     cover = MetricDiversifier.load_model(cover_path)
-    obs = reset_env(env, mode='intrinsic')
-    for i in range(100000):
-        print(i)
+    obs = reset_env(env, cover, mode='intrinsic')
+    i = 0
+    while True:
+        i += 1
+        # print(i)
         env.render()
-        time.sleep(.001)
+        time.sleep(.01)
         action, _, state, _ = policy.step(obs)
-        if i % 10 == 0:
+        if i % 30 == 0:
             action = env.action_space.sample()
         obs, reward, done, info = env.step(action)
-        if reward:
-            input("Reward")
-        if i % 1000 == 0 or info['is_success']:
+        # print(f"achieved: {obs['achieved_goal']}, desired: {obs['desired_goal']}")
+        if i % 500 == 0 or info['is_success']:
+            reset_env(env, cover, mode='extrinsic')
             obs = set_goal(env, cover)
+            if info['is_success']:
+                input(f"success at:{i}")
+            i = 0
     env.close()
 
 
@@ -105,5 +113,5 @@ if __name__ == '__main__':
         plain_loop(environment, **extra_args)
     elif extra_args['option'] == 'play_policy':
         assert extra_args['load_path'] is not None
-        assert extra_args['cover_path'] is not None
+        # assert extra_args['cover_path'] is not None
         play_policy(environment, args.env, **extra_args)

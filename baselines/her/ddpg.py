@@ -65,9 +65,9 @@ class DDPG(object):
         if not self.active:
             return
 
-        print("\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\")
-        print(f"Batch size: {batch_size}, action l2: {action_l2} learning rate: {Q_lr, pi_lr}")
-        print("\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\")
+        print("\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\")
+        print(f"Batch size: {batch_size}, action l2: {action_l2} learning rate: {Q_lr, pi_lr}, gamma: {gamma}")
+        print("\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\")
 
         if self.clip_return is None:
             self.clip_return = np.inf
