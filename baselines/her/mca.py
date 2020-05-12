@@ -67,9 +67,9 @@ class MCA:
                           'g': g})
         return inits
 
-    def update_metric_model(self):
+    def update_metric_model(self, n):
         # batch = self.policy.buffer.sample(100)
-        batch = self.sample_from_buffer(100, valids_only=True)
+        batch = self.sample_from_buffer(n, valids_only=True)
         if batch is None:
             return
         for o, ag, qpos, qvel in zip(batch['o'], batch['ag'], batch['qpos'], batch['qvel']):

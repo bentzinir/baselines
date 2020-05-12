@@ -96,7 +96,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             # mca.load_episode(mca_episode)
             if n1 % 2:
                 # mca[np.random.randint(len(mca))].update_metric_model()
-                [m.update_metric_model() for m in mca]
+                [m.update_metric_model(n=50) for m in mca]
 
             if not trainable:
                 continue
