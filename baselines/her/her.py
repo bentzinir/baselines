@@ -73,8 +73,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         rollout_worker.clear_history()
         mca[0].rollout_worker.clear_history()
         for n1 in range(n_cycles):
-            # random = n1 % 10 == 0
-            random = False
+            random = n1 % 10 == 0
             episode = rollout_worker.generate_rollouts()
 
             # mca.store_ex_episode(episode)
@@ -94,7 +93,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
                                                                   random=random_cover or random or not trainable)
 
             # mca.load_episode(mca_episode)
-            if n1 % 2:
+            if n1 == 0:
                 # mca[np.random.randint(len(mca))].update_metric_model()
                 [m.update_metric_model() for m in mca]
 

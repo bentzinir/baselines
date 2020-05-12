@@ -155,8 +155,8 @@ def build_env(args, extra_args=None):
                            )
 
         # TODO: add back after debug
-        if env_type == 'mujoco':
-            env = VecNormalize(env, use_tf=True)
+        # if env_type == 'mujoco':
+        #     env = VecNormalize(env, use_tf=True)
 
     return env
 

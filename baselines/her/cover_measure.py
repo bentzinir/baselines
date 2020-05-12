@@ -167,6 +167,13 @@ def mean_reach_time(env, cover, nsamples, nsteps, distance_th):
     return np.asarray(_hit_time)
 
 
+def parse_horizon(logfile):
+    with open(logfile, "r") as fid:
+        lines = fid.read().splitlines()
+        t_lines = [line for line in lines if 'T: ' in line]
+    return float(t_lines[0].split(' ')[-1])
+
+
 def parse_log(logfile, field_name, normalize=False, scale=1):
     with open(logfile, "r") as fid:
         lines = fid.read().splitlines()
@@ -199,13 +206,25 @@ def main(args):
     results["hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=False, scale=2)
     results["hit time rate"]["xscale"] = 1
 
+    results["Q"] = dict()
+    results["Q"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/mean_Q", normalize=False, scale=1)
+    results["Q"]["xscale"] = 1
+
     results["goal std"] = dict()
     results["goal std"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="stats_g/std", normalize=False, scale=100)
     results["goal std"]["xscale"] = 1
 
-    results["Q"] = dict()
-    results["Q"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/mean_Q", normalize=False, scale=1)
-    results["Q"]["xscale"] = 1
+    v = results["Q"]["mean"] + results["hit time rate"]["mean"]
+
+    horizon = parse_horizon(logfile=f"{log_directory}/log.txt")
+
+    q_rate = horizon - results["hit time rate"]["mean"]
+
+    q_gap = 100 * results["Q"]["mean"] / q_rate
+
+    results["q_gap"] = dict()
+    results["q_gap"]["mean"] = q_gap
+    results["q_gap"]["xscale"] = 1
 
     for k in [100, 300, 500, 700]:
         fmean = f"k: {k}, RT mean"
