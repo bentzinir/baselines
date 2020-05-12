@@ -10,7 +10,7 @@ import time
 from baselines.her.experiment import config
 from baselines.common import tf_util
 import copy
-np.set_printoptions(precision=4)
+np.set_printoptions(precision=2)
 
 
 def set_goal(env, cover):
@@ -87,17 +87,17 @@ def play_policy(env, env_id, load_path=None, cover_path=None, **kwargs):
         i += 1
         # print(i)
         env.render()
-        time.sleep(.01)
+        time.sleep(.03)
         action, _, state, _ = policy.step(obs)
         if i % 30 == 0:
             action = env.action_space.sample()
         obs, reward, done, info = env.step(action)
-        # print(f"achieved: {obs['achieved_goal']}, desired: {obs['desired_goal']}")
+        # print(f"achieved: {obs['achieved_goal']}, desired: {obs['desired_goal']}, obs: {obs['observation'][:6]}")
         if i % 500 == 0 or info['is_success']:
             reset_env(env, cover, mode='extrinsic')
             obs = set_goal(env, cover)
-            if info['is_success']:
-                input(f"success at:{i}")
+            # if info['is_success']:
+            #     input(f"success at:{i}")
             i = 0
     env.close()
 
