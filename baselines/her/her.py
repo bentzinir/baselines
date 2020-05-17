@@ -65,83 +65,63 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
     best_success_rate = -1
 
     if policy.bc_loss == 1: policy.init_demo_buffer(demo_file)  # initialize demo buffer if training with demonstrations
-    n_mca_envs = mca[0].rollout_worker.venv.num_envs
+    n_mca_envs = mca.rollout_worker.venv.num_envs
     # num_timesteps = n_epochs * n_cycles * rollout_length * number of rollout workers
 
     for epoch in range(n_epochs):
         # train
         rollout_worker.clear_history()
-        mca[0].rollout_worker.clear_history()
+        mca.rollout_worker.clear_history()
         for n1 in range(n_cycles):
             random = n1 % 10 == 0
+            # random = False
             episode = rollout_worker.generate_rollouts()
-
-            # mca.store_ex_episode(episode)
-
-            # sample either from the small and diverse state model or from the larger replay buffer
-            if np.random.binomial(n=1, p=0.5):
-                ex_inits = mca[np.random.randint(len(mca))].state_model.draw(n_mca_envs)
-                ex_inits_g = mca[np.random.randint(len(mca))].state_model.draw(n_mca_envs)
-                if ex_inits and ex_inits_g:
-                    for l in range(len(ex_inits)):
-                        ex_inits[l]["g"] = ex_inits_g[l]["g"]
-
-            else:
-                ex_inits = mca[0].init_from_buffer(n_mca_envs)
-
-            mca_episode = mca[0].rollout_worker.generate_rollouts(ex_init=ex_inits,
-                                                                  random=random_cover or random or not trainable)
-
-            # mca.load_episode(mca_episode)
-            if n1 == 0:
-                # mca[np.random.randint(len(mca))].update_metric_model()
-                [m.update_metric_model() for m in mca]
+            inits = mca.draw_init(n_mca_envs)
+            mca_episode = mca.rollout_worker.generate_rollouts(ex_init=inits, random=random_cover or random or not trainable)
 
             if not trainable:
                 continue
-
-            # episode = mca.overload_sg(episode, mca_episode)
-            # mca_episode = mca.overload_ss(mca_episode)
 
             # if random:
             #     continue
 
             policy.store_episode(episode)
-            mca[0].policy.store_episode(mca_episode)
+            mca.policy.store_episode(mca_episode)
 
             for n2 in range(n_batches):
                 policy.train()
-                mca[0].policy.train()
+                mca.policy.train()
             policy.update_target_net()
-            mca[0].policy.update_target_net()
+            mca.policy.update_target_net()
+            mca.update_age()
+
+        mca.refresh_cells(n=500)
+        mca.update_metric_model(n=5e3)
 
         # test
         evaluator.clear_history()
-        mca[0].evaluator.clear_history()
+        mca.evaluator.clear_history()
         for n3 in range(n_test_rollouts):
             record = n3 == 0 and epoch % policy_save_interval == 0
             evaluator.generate_rollouts(record=record)
-            mca[0].evaluator.generate_rollouts(ex_init=mca[np.random.randint(len(mca))].state_model.draw(n_mca_envs),
-                                               record=record,
-                                               random=random_cover)
+            mca.evaluator.generate_rollouts(ex_init=mca.draw_init(n_mca_envs),
+                                            record=record,
+                                            random=random_cover)
 
         if epoch % policy_save_interval == 0:
-            for m in mca:
-                hit_rate, roam_time = xy_cover(cover_measure_env, m.state_model.buffer, nsamples=1, nsteps=20)
-                # print(f"epoch: {epoch}, k: {m.state_model.k}, roam time: {roam_time.mean()}+- {roam_time.std()}")
-                logger.record_tabular(f'k: {m.state_model.k}, RT mean', roam_time.mean())
-                logger.record_tabular(f'k: {m.state_model.k}, RT std', roam_time.std())
-                # m.state_model.update_buffer(roam_time.mean()-roam_time.std())
-                m.state_model.save(message=f"epoch_{epoch}")
+            # hit_rate, roam_time = xy_cover(cover_measure_env, mca.state_model.buffer, nsamples=1, nsteps=20)
+            # logger.record_tabular(f'k: {mca.state_model.k}, RT mean', roam_time.mean())
+            # logger.record_tabular(f'k: {mca.state_model.k}, RT std', roam_time.std())
+            [state_model.save(message=f"epoch_{epoch}") for state_model in mca.state_model]
 
         # record logs
         log(epoch, evaluator, rollout_worker, policy, rank, "policy")
-        log(epoch, mca[0].evaluator, mca[0].rollout_worker, mca[0].policy, rank, "explorer")
+        log(epoch, mca.evaluator, mca.rollout_worker, mca.policy, rank, "explorer")
 
         # save the policy if it's better than the previous ones
         best_success_rate = save(epoch, policy, evaluator, rank, best_success_rate, save_path, policy_save_interval)
 
-        mca[0].best_success_rate = save(epoch, mca[0].policy, mca[0].evaluator, rank, mca[0].best_success_rate, save_path, policy_save_interval)
+        mca.best_success_rate = save(epoch, mca.policy, mca.evaluator, rank, mca.best_success_rate, save_path, policy_save_interval)
 
         # make sure that different threads have different seeds
         local_uniform = np.random.uniform(size=(1,))
@@ -160,7 +140,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     seed=None,
     eval_env=None,
     replay_strategy='future',
-    policy_save_interval=50,
+    policy_save_interval=25,
     clip_return=True,
     demo_file=None,
     override_params=None,
@@ -265,15 +245,14 @@ def learn(*, network, env, mca_env, total_timesteps,
     ##############################################################################
     # Maximum Coverage Agent
     mca_active = kwargs["mode"] in ["exploration_module", "maximum_span"]
-
     mca_load_path = set_default_value(kwargs, 'mca_load_path', None)
     mca_exploration = set_default_value(kwargs, 'mca_exploration', 'eps_greedy')
-    mca_action_l2 = set_default_value(kwargs, 'mca_Action_l2', 0)
+    mca_action_l2 = set_default_value(kwargs, 'mca_action_l2', 0)
     ss = set_default_value(kwargs, 'ss', False)
-    sharing = set_default_value(kwargs, 'sharing', False)
     trainable = set_default_value(kwargs, 'trainable', True)
     random_cover = set_default_value(kwargs, 'random_cover', False)
-    dilute_at_goal = set_default_value(kwargs, 'dilute_at_goal', False)
+    semi_metric = set_default_value(kwargs, 'semi_metric', False)
+    k = set_default_value(kwargs, 'k', 1000)
 
     mca_policy, mca_rw, mca_evaluator, mca_params, coord_dict, reward_fun = prepare_agent(mca_env, eval_env,
                                                                                           active=mca_active,
@@ -285,7 +264,6 @@ def learn(*, network, env, mca_env, total_timesteps,
                                                                                           )
 
     load_p = 1
-    phase_length = n_cycles * rollout_worker.T * mca_rw.rollout_batch_size * load_p
 
     # from baselines.her.state_model_vec import make_state_model_vec
     # state_model_vec = make_state_model_vec(k_vec=[100, 200, 400],
@@ -299,27 +277,29 @@ def learn(*, network, env, mca_env, total_timesteps,
     #                                        dilute_at_goal=kwargs['dilute_at_goal']
     #                                        )
 
-    mca = []
-    for kidx, k in enumerate([1000]):
-        mca_state_model = MetricDiversifier(k=k,
-                                            reward_fun=reward_fun,
-                                            vis=True,
-                                            vis_coords=coord_dict['vis'],
-                                            load_model=kwargs['load_mca_path'],
-                                            save_path=f"{log_path}/{k}/mca_cover",
-                                            random_cover=random_cover,
-                                            load_p=load_p,
-                                            phase_length=phase_length,
-                                            dilute_at_goal=dilute_at_goal)
+    if semi_metric:
+        ncells = rollout_worker.T
+    else:
+        ncells = 1
 
-        mca.append(MCA(policy=mca_policy,
-                       rollout_worker=mca_rw,
-                       evaluator=mca_evaluator,
-                       state_model=mca_state_model,
-                       sharing=sharing,
-                       coord_dict=coord_dict,
-                       ss=ss
-                       ))
+    state_model_vec = []
+    for cidx in range(ncells):
+        state_model_vec.append(MetricDiversifier(k=k,
+                                                 vis=False,
+                                                 vis_coords=coord_dict['vis'],
+                                                 load_model=kwargs['load_mca_path'],
+                                                 save_path=f"{log_path}/{cidx}/mca_cover",
+                                                 random_cover=random_cover,
+                                                 load_p=load_p,
+                                                 ))
+
+    mca = MCA(policy=mca_policy,
+              semi_metric=semi_metric,
+              rollout_worker=mca_rw,
+              evaluator=mca_evaluator,
+              state_model=state_model_vec,
+              coord_dict=coord_dict,
+              ss=ss)
     ##############################################################################
 
     if 'n_epochs' not in kwargs:

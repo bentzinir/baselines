@@ -34,6 +34,22 @@ class ReplayBuffer:
         with self.lock:
             return self.current_size == self.size
 
+    def sample_regular(self, batch_size):
+        buffers = {}
+
+        with self.lock:
+            assert self.current_size > 0
+            for key in self.buffers.keys():
+                buffers[key] = self.buffers[key][:self.current_size]
+
+        rollout_batch_size = buffers['u'].shape[0]
+        T = buffers['u'].shape[1]
+        episode_idxs = np.random.randint(0, rollout_batch_size, batch_size)
+        t_samples = np.random.randint(T, size=batch_size)
+        transitions = {key: buffers[key][episode_idxs, t_samples].copy() for key in buffers.keys()}
+
+        return transitions
+
     def sample(self, batch_size):
         """Returns a dict {key: array(batch_size x shapes[key])}
         """

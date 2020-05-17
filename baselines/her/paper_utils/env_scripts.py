@@ -17,7 +17,7 @@ def set_goal(env, cover):
     if cover is None:
         return env.reset()
     pnt = cover[random.choice(range(len(cover)))]
-    return env.set_goal(goal=pnt['x_feat'])
+    return env.set_goal(goal=pnt['ag'])
 
 
 def reset_env(env, cover, mode='intrinsic'):
@@ -34,42 +34,44 @@ def reset_env(env, cover, mode='intrinsic'):
         obs = env.reset()
         qpos = obs["qpos"]
         qvel = obs["qvel"]
-        ex_init = {'x': None, 'qpos': np.zeros_like(qpos), 'qvel': np.zeros_like(qvel), 'g': None}
+        ex_init = {'o': None, 'qpos': np.zeros_like(qpos), 'qvel': np.zeros_like(qvel), 'g': None}
         env.reset(ex_init=ex_init)
 
 
-def scan_cover(env, action_repetition=1, **kwargs):
-    reset_env(env, mode='intrinsic')
+def scan_cover(env, action_repetition=1, cover_path=None, **kwargs):
+    cover = MetricDiversifier.load_model(cover_path)
+    obs = reset_env(env, cover, mode='intrinsic')
     for i in range(100000):
         env.render()
-        time.sleep(0.1)
+        time.sleep(.3)
         if i % action_repetition == 0:
             a = env.action_space.sample()
         obs, reward, done, info = env.step(a)
-        if i % 10 == 0:
-            ob = reset_env(env, mode='extrinsic', cover_path=kwargs['cover_path'])
+        if i % 1 == 0:
+            ob = reset_env(env, cover, mode='extrinsic')
             # print(np.linalg.norm(ob["qvel"]))
-            time.sleep(2)
+            time.sleep(.5)
     env.close()
 
 
 def plain_loop(env, action_repetition=1, clip_range=0.5, **kwargs):
     reset_env(env, cover=None, mode='intrinsic')
-    for i in range(100000):
+    i = 0
+    while True:
+        i += 1
         env.render()
-        time.sleep(.03)
+        time.sleep(.01)
         if i % action_repetition == 0:
             a = np.clip(env.action_space.sample(), -clip_range, clip_range)
         o, r, d, info = env.step(a)
-        if r:
-            input("Success")
-        if i % 100 == 0:
+        if i % 1000 == 0:
             reset_env(env, cover=None, mode='intrinsic')
             print(f"Reset")
+            i = 0
     env.close()
 
 
-def play_policy(env, env_id, load_path=None, cover_path=None, **kwargs):
+def play_policy(env, env_id, load_path=None, cover_path=None, semi_metric=False, **kwargs):
     params = config.DEFAULT_PARAMS
     _override_params = copy.deepcopy(kwargs)
     params.update(**_override_params)
@@ -89,15 +91,18 @@ def play_policy(env, env_id, load_path=None, cover_path=None, **kwargs):
         env.render()
         time.sleep(.03)
         action, _, state, _ = policy.step(obs)
-        if i % 30 == 0:
-            action = env.action_space.sample()
+        # if i % 10 == 0:
+        #     action = env.action_space.sample()
         obs, reward, done, info = env.step(action)
         # print(f"achieved: {obs['achieved_goal']}, desired: {obs['desired_goal']}, obs: {obs['observation'][:6]}")
-        if i % 500 == 0 or info['is_success']:
-            reset_env(env, cover, mode='extrinsic')
+        if i % 50 == 0 or info['is_success']:
+            if cover is None or semi_metric:
+                reset_env(env, cover, mode='intrinsic')
+            else:
+                reset_env(env, cover, mode='extrinsic')
             obs = set_goal(env, cover)
-            # if info['is_success']:
-            #     input(f"success at:{i}")
+            if info['is_success']:
+                input(f"success at:{i}")
             i = 0
     env.close()
 
