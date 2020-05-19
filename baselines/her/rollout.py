@@ -48,7 +48,7 @@ class RolloutWorker:
             return
 
         if ex_init is None:
-            ex_init = [{'x': None, 'qpos': None, 'qvel': None, 'g': None} for _ in range(self.venv.num_envs)]
+            ex_init = [{'o': None, 'qpos': None, 'qvel': None, 'g': None} for _ in range(self.venv.num_envs)]
 
         self.obs_dict = self.venv.reset(ex_init, record)
         self.initial_o = self.obs_dict['observation']
@@ -94,7 +94,7 @@ class RolloutWorker:
         obs, achieved_goals, acts, goals, successes = [], [], [], [], []
         dones = []
         info_values = [np.empty((self.T - 1, self.rollout_batch_size, self.dims['info_' + key]), np.float32) for key in self.info_keys]
-        Qs, qposes, qvels = [], [], []
+        Qs, qposes, qvels, hit_times = [], [], [], []
 
         for t in range(self.T):
             policy_output = self.policy.get_actions(

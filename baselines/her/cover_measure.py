@@ -1,14 +1,8 @@
-import gym
-from baselines.her.metric_diversification import MetricDiversifier
 from baselines.common.cmd_util import common_arg_parser
 from baselines.run import parse_cmdline_kwargs
-import os, sys
-import itertools
+import sys
 import numpy as np
 from matplotlib import pyplot as plt
-import collections
-from baselines.her.metric_diversification import Bunch
-from baselines.common.misc_util import set_default_value
 
 
 def reward_fun(env, ag_2, g, info):  # vectorized
@@ -38,10 +32,10 @@ def plot(results, log_directory):
 
 
 def init_from_point(env, pnt):
-    ex_init = {'x': pnt['x'],
+    ex_init = {'o': pnt['o'],
                'qpos': pnt['qpos'],
                'qvel': pnt['qvel'],
-               'g': pnt['x_feat']}
+               'g': pnt['ag']}
     return env.reset(ex_init=ex_init)
 
 
@@ -104,8 +98,6 @@ def min_reach_time(env, cover, nsamples, nsteps, distance_th):
         time = None
         for k in range(len(cover)):
             info = cover[k]['info']
-            if isinstance(info, collections.Mapping):
-                info = Bunch(info)
             ex_init = {'x': cover[k]['x'], 'info': info, 'g': cover[k]['x_feat']}
             o = env.reset(ex_init=ex_init)
             k_hit = False
@@ -144,8 +136,6 @@ def mean_reach_time(env, cover, nsamples, nsteps, distance_th):
         sample_set = np.random.choice(list(range(len(cover))), sample_size, replace=False)
         for i, k in enumerate(sample_set):
             info = cover[k]['info']
-            if isinstance(info, collections.Mapping):
-                info = Bunch(info)
             ex_init = {'x': cover[k]['x'], 'info': info, 'g': cover[k]['x_feat']}
             o = env.reset(ex_init=ex_init)
             k_hit = False
@@ -203,36 +193,28 @@ def main(args):
     results["train success"]["xscale"] = 1
 
     results["hit time rate"] = dict()
-    results["hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=False, scale=2)
+    results["hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=True, scale=20)
     results["hit time rate"]["xscale"] = 1
+
+    results["train hit time rate"] = dict()
+    results["train hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="train/hit_time_rate", normalize=True, scale=20)
+    results["train hit time rate"]["xscale"] = 1
 
     results["Q"] = dict()
     results["Q"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/mean_Q", normalize=False, scale=1)
     results["Q"]["xscale"] = 1
 
     results["goal std"] = dict()
-    results["goal std"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="stats_g/std", normalize=False, scale=100)
+    results["goal std"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="stats_g/std", normalize=True, scale=100)
     results["goal std"]["xscale"] = 1
 
-    v = results["Q"]["mean"] + results["hit time rate"]["mean"]
-
-    horizon = parse_horizon(logfile=f"{log_directory}/log.txt")
-
-    q_rate = horizon - results["hit time rate"]["mean"]
-
-    q_gap = 100 * results["Q"]["mean"] / q_rate
-
-    results["q_gap"] = dict()
-    results["q_gap"]["mean"] = q_gap
-    results["q_gap"]["xscale"] = 1
-
-    for k in [100, 300, 500, 700]:
-        fmean = f"k: {k}, RT mean"
-        fstd = f"k: {k}, RT std"
-        results[f"{k}"] = dict()
-        results[f"{k}"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name=fmean, normalize=False)
-        results[f"{k}"]["std"] = parse_log(f"{log_directory}/log.txt", field_name=fstd, normalize=False)
-        results[f"{k}"]["xscale"] = 50
+    # for k in [100, 300, 500, 700]:
+    #     fmean = f"k: {k}, RT mean"
+    #     fstd = f"k: {k}, RT std"
+    #     results[f"{k}"] = dict()
+    #     results[f"{k}"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name=fmean, normalize=False)
+    #     results[f"{k}"]["std"] = parse_log(f"{log_directory}/log.txt", field_name=fstd, normalize=False)
+    #     results[f"{k}"]["xscale"] = 50
     plot(results, log_directory)
 
 

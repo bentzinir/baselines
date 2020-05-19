@@ -3,13 +3,7 @@ from collections import deque
 import matplotlib.pyplot as plt
 import os
 import json
-import copy
 import random
-
-
-class Bunch(object):
-    def __init__(self, adict):
-        self.__dict__.update(adict)
 
 
 class VisObserver:
@@ -19,24 +13,16 @@ class VisObserver:
         if ndim == 2:
             ax = fig.add_axes([0, 0, 1, 1])
             self.scat = ax.scatter(x=[], y=[], c='r', marker='+')
-            self.proposal_scat = plt.scatter(x=[], y=[], c='b', marker='+')
         elif ndim == 3:
             from mpl_toolkits.mplot3d import Axes3D
             ax = Axes3D(fig)
             self.scat_ax = ax
             self.scat = ax.scatter(xs=[], ys=[], c='r', marker='+')
-            self.proposal_scat = ax.scatter(xs=[], ys=[], c='b', marker='+')
-        # plt.show(block=False)
         plt.tight_layout()
 
-    def update(self, points, proposal_points=None, draw=False):
+    def update(self, points, draw=False):
         if self.ndim == 2:
             self.scat.set_offsets(points)
-            if proposal_points:
-                self.proposal_scat.set_offsets(proposal_points)
-                self.proposal_scat.set_color('b')
-            else:
-                self.proposal_scat.set_color('c')
         elif self.ndim == 3:
             pts = np.asarray(points)
             self.scat._offsets3d = (pts[:, 0], pts[:, 1], pts[:, 2])
@@ -44,9 +30,6 @@ class VisObserver:
             self.scat_ax.set_xlim([pts[:, 0].min(), pts[:, 0].max()])
             self.scat_ax.set_ylim([pts[:, 1].min(), pts[:, 1].max()])
             self.scat_ax.set_zlim([pts[:, 2].min(), pts[:, 2].max()])
-            if proposal_points:
-                prop_pts = np.asarray(proposal_points)
-                self.proposal_scat._offsets3d = (prop_pts[:, 0], prop_pts[:, 1], prop_pts[:, 2])
         if draw:
             plt.draw()
             plt.pause(0.0001)
@@ -60,25 +43,14 @@ class VisObserver:
 
 
 class MetricDiversifier:
-    def __init__(self, k, reward_fun=None, random_cover=False, load_p=1, vis=False, vis_coords=None, load_model=None,
-                 phase_length=1000, dilute_at_goal=False, save_path=None, **kwargs):
-        if random_cover:
-            self.kmin = k
-        else:
-            self.kmin = k
+    def __init__(self, k, random_cover=False, load_p=1, vis=False, vis_coords=None, load_model=None, save_path=None, **kwargs):
         self.k = k
         self.k_approx = k // 10
         self.M = -np.inf * np.ones((self.k, self.k))
-        self.age = np.zeros(self.k)
-        self.reward_fun = reward_fun
-        self.buffer = deque(maxlen=self.k)
-        self._buffer = deque(maxlen=self.k)
-        self.roam_time = -np.inf
-        self.proposal = False
-        self.phase_length = phase_length
-        self.x_proposal = self.init_record(x=None)
+        self.age = np.inf * np.ones(self.k)
+        self.buffer = [None for _ in range(self.k)]
+        [self.invalidate_idx(idx) for idx in range(self.k)]
         self.random_cover = random_cover
-        self.dilute_at_goal = dilute_at_goal
         self.save_path = save_path
         self.load_p = load_p
         self.vis = vis
@@ -97,92 +69,82 @@ class MetricDiversifier:
 
     def _buffer_2_dict(self):
         z = {}
-        for i, b in enumerate(self.buffer):
+        i = 0
+        for b in self.buffer:
+            if b is None:
+                continue
             z[i] = {}
             for key, val in b.items():
                 if type(val) == np.ndarray:
                     val = val.tolist()
-                    # val = f'[{", ".join(map(str, val))}]'
                 elif val == np.inf or val == -np.inf:
                     val = None
                 elif isinstance(val, (np.floating, np.integer)):
                     val = val.item()
                 z[i][key] = val
+            i += 1
         return z
 
     @staticmethod
-    def quasimetric(a, a_feat, b, d_func=None):
+    def quasimetric(x1_o, x1_ag, x2_o, x2_ag, d_func=None, feat_distance=True):
         '''
-        :param a: set of points
-        :param b: set of points
+        :param x1_o: set of points
+        :param x2_o: set of points
         :param d_func: a quasimetric distance function
+        :param feat_distance: decide whether distance is measured on features or on entire state
         :return: the point in the set that is closest to x
         '''
         if d_func is None:
-            a2b_distance = np.linalg.norm(a - b, ord=2, axis=1)
+            if feat_distance:
+                # x1x2_distance = np.linalg.norm(x1_ag - x2_ag, ord=2, axis=1)
+                # TODo: remove after debug
+                distance_mat = ((x1_ag - x2_ag) ** 2)
+                weight_mat = np.ones_like(distance_mat)
+                weight_mat[..., 3:] = 10
+                x1x2_distance = (weight_mat * distance_mat).sum(axis=1)
+            else:
+                x1x2_distance = np.linalg.norm(x1_o - x2_o, ord=2, axis=1)
         else:
-            _, Q = d_func(o=a, ag=a_feat, g=b, compute_Q=True, use_target_net=True)
-            a2b_distance = - Q.squeeze()
-        return a2b_distance
+            _, Q = d_func(o=x1_o, ag=x1_ag, g=x2_ag, compute_Q=True, use_target_net=True)
+            x1x2_distance = - Q.squeeze()
+        return x1x2_distance
 
-    def _set_distance(self, d_func):
-        '''
-        :param idxs: indexes of points in the buffer
-        :param d_func: a quasimetric distance function
-        :return: a member of idxs that is most reachable by any other point
-        '''
-
-        all_idxs = list(range(self.current_size))
-        for idx in range(self.current_size):
-            p = self.buffer[idx]['x_feat']
-            _X = self._buffer_2_array(val='x', idxs=all_idxs)
-            distance_to_p = self.quasimetric(_X, p, d_func=d_func)
-            distance_to_p[idx] = np.inf
-            self.buffer[idx]['distance'] = distance_to_p.min()
-            self.buffer[idx]['nn'] = distance_to_p.argmin()
-            self.buffer[idx]['c'] += 1
-        return
-
-    def update_proposal(self, new_pnt):
-        # check that new_pnt is not "at goal" w.r.t any existing point
-        if self.dilute_at_goal:
-            new_pnt_at_goal = self._set_pnt_reward(new_pnt)
-        else:
-            new_pnt_at_goal = False
-        if new_pnt['distance'] > self.x_proposal['distance'] and not new_pnt_at_goal:
-            self.x_proposal = new_pnt
-
-    def append_new_point(self, new_point=None, verbose=False):
-        if new_point is None:
-            new_point = self.x_proposal
-        if self.current_size < self.k and new_point['x'] is not None:
-            if verbose:
-                print(f"Appending: {self.current_size} -> {self.current_size + 1}")
-            # self.fit_buffer_size(1)
-            self.buffer.append(new_point)
-            self.x_proposal = self.init_record()
+    def prepare_dfunc_inputs(self, pnt):
+        set_o_mat = self._buffer_2_array(val='o', idxs=list(range(self.current_size)))
+        set_ag_mat = self._buffer_2_array(val='ag', idxs=list(range(self.current_size)))
+        pnt_o_mat = np.repeat(np.expand_dims(pnt['o'], 0), repeats=self.current_size, axis=0)
+        pnt_ag_mat = np.repeat(np.expand_dims(pnt['ag'], 0), repeats=self.current_size, axis=0)
+        return set_o_mat, set_ag_mat, pnt_o_mat, pnt_ag_mat
 
     def adjust_set(self, new_pnt, d_func):
 
-        self.age += 1
+        for idx in self.used_slots():
+            pnt = self.buffer[idx]
+            if pnt['ag'] is None:
+                assert False
 
-        ref_idx_set = np.random.choice(list(range(self.current_size)), self.k_approx, replace=False)
+        ref_idx_set = np.random.choice(self.used_slots(), self.k_approx, replace=False)
+
+        assert len(self.open_slots()) == 0
 
         # refresh outdated matrix entries
         for idx in ref_idx_set:
-            if self.age[idx] > 1000:
-                # print(f'Updating: {idx, self.age[idx]}')
-                self.update_to(idx, d_func)
-                self.update_from(idx, d_func)
+            if self.age[idx] > 10:
+                pnt = self.buffer[idx]
+                set_o_mat, set_ag_mat, pnt_o_mat, pnt_ag_mat = self.prepare_dfunc_inputs(pnt)
+                # update "from" distances pnt -> set
+                self.M[idx] = self.quasimetric(x1_o=pnt_o_mat, x1_ag=pnt_ag_mat, x2_o=set_o_mat, x2_ag=set_ag_mat, d_func=d_func)
+                self.M[idx, idx] = np.inf
+
+                # update "to" distances set -> pnt
+                self.M[:, idx] = self.quasimetric(x1_o=set_o_mat, x1_ag=set_ag_mat, x2_o=pnt_o_mat, x2_ag=pnt_ag_mat, d_func=d_func)
+                self.M[idx, idx] = np.inf
+
                 self.age[idx] = 0
 
-        set_x_mat = self._buffer_2_array(val='x', idxs=list(range(self.current_size)))
+        set_o_mat, set_ag_mat, newpnt_o_mat, newpnt_ag_mat = self.prepare_dfunc_inputs(new_pnt)
 
-        set_feat_mat = self._buffer_2_array(val='x_feat', idxs=list(range(self.current_size)))
-
-        newpnt_feat_mat = np.repeat(np.expand_dims(new_pnt['x_feat'], 0), repeats=self.current_size, axis=0)
-
-        distances_to_new_pnt = self.quasimetric(a=set_x_mat, a_feat=set_feat_mat, b=newpnt_feat_mat, d_func=d_func)
+        distances_to_new_pnt = self.quasimetric(x1_o=set_o_mat, x1_ag=set_ag_mat, x2_o=newpnt_o_mat, x2_ag=newpnt_ag_mat, d_func=d_func)
 
         ##################################
         b_idx = -1
@@ -204,14 +166,7 @@ class MetricDiversifier:
 
         if b_idx >= 0:
 
-            # update pairwise distance matrix
-            newpnt_x_mat = np.repeat(np.expand_dims(new_pnt['x'], 0), repeats=self.current_size, axis=0)
-
-            newpnt_feat_mat = np.repeat(np.expand_dims(new_pnt['x_feat'], 0), repeats=self.current_size, axis=0)
-
-            set_feat_mat = self._buffer_2_array(val='x_feat', idxs=list(range(self.current_size)))
-
-            self.M[b_idx] = self.quasimetric(a=newpnt_x_mat, a_feat=newpnt_feat_mat, b=set_feat_mat, d_func=d_func)
+            self.M[b_idx] = self.quasimetric(x1_o=newpnt_o_mat, x1_ag=newpnt_ag_mat, x2_o=set_o_mat, x2_ag=set_ag_mat, d_func=d_func)
 
             self.M[:, b_idx] = distances_to_new_pnt
 
@@ -220,151 +175,46 @@ class MetricDiversifier:
             # replace in buffer
             self.buffer[b_idx] = new_pnt
 
-    def update_from(self, j, d_func):
-        pnt = self.buffer[j]
-        pnt_x_mat = np.repeat(np.expand_dims(pnt['x'], 0), repeats=self.current_size, axis=0)
-        pnt_feat_mat = np.repeat(np.expand_dims(pnt['x_feat'], 0), repeats=self.current_size, axis=0)
-        set_feat_mat = self._buffer_2_array(val='x_feat', idxs=list(range(self.current_size)))
-        self.M[j] = self.quasimetric(a=pnt_x_mat, a_feat=pnt_feat_mat, b=set_feat_mat, d_func=d_func)
-        self.M[j, j] = np.inf
+        return b_idx >= 0
 
-    def update_to(self, j, d_func):
-        pnt = self.buffer[j]
-        pnt_feat_mat = np.repeat(np.expand_dims(pnt['x_feat'], 0), repeats=self.current_size, axis=0)
-        set_x_mat = self._buffer_2_array(val='x', idxs=list(range(self.current_size)))
-        set_feat_mat = self._buffer_2_array(val='x_feat', idxs=list(range(self.current_size)))
-        self.M[:, j] = self.quasimetric(a=set_x_mat, a_feat=set_feat_mat, b=pnt_feat_mat, d_func=d_func)
-        self.M[j, j] = np.inf
+    def invalidate_idx(self, idx):
+        self.M[idx] = -np.inf
+        self.M[:, idx] = -np.inf
+        self.M[idx, idx] = np.inf
+        self.buffer[idx] = None
+        self.age[idx] = np.inf
 
-    def update_buffer(self, roam_time):
-        if roam_time >= self.roam_time:
-            self.roam_time = roam_time
-            self._buffer = copy.deepcopy(self.buffer)
-            print(f"New best roam time: {self.roam_time}")
-        else:
-            # reset to previous buffer
-            self.buffer = copy.deepcopy(self._buffer)
-            self.age += np.inf
-            print(f"Resetting to previous buffer, current roam time: {self.roam_time}")
-
-    def _load_active(self, new_pnt, d_func):
+    def load_new_point(self, new_pnt, d_func=None):
+        if new_pnt is None:
+            return False
         # load new_pnt if the buffer is empty
-        if self.current_size < self.kmin:
-            self.buffer.append(new_pnt)
-            return
-
+        if 'g' in new_pnt.keys():
+            a = 1
+        if self.current_size < self.k:
+            self.buffer[random.choice(self.open_slots())] = new_pnt
+            # self.buffer.append(new_pnt)
+            return False
         if not np.random.binomial(n=1, p=self.load_p):
-            return
-
-        self.adjust_set(new_pnt, d_func)
-
-        # self.counter += 1
-        #
-        # toggle_phase = self.counter % self.phase_length == 0
-        #
-        # if self.current_size >= self.k:
-        #     self.adjust_set(new_pnt, distances_2_new_pnt, d_func)
-        #     if toggle_phase and self.dilute_at_goal:
-        #         self.dilute(verbose=True)
-        # else:
-        #     if toggle_phase:
-        #         self.proposal = not self.proposal
-        #     if self.proposal:
-        #         self.update_proposal(new_pnt)
-        #         if toggle_phase:
-        #             self.append_new_point()
-        #     else:
-        #         self.adjust_set(new_pnt, distances_2_new_pnt, d_func)
-
-    def _load_inactive(self, new_point, verbose=False):
-        # load new_pnt if the buffer is empty
-        if self.current_size < self.kmin:
-            self.buffer.append(new_point)
-            return
-        if not np.random.binomial(n=1, p=0.005):
-            return
-        if self.current_size > self.k:
-            self.buffer.popleft()
-        # self.fit_buffer_size(1)
-        self.buffer.append(new_point)
-        if self.dilute_at_goal:
-            self.dilute(verbose=False)
-        if verbose:
-            print(f"Buffer size: {self.current_size}")
-
-    def load_new_point(self, new_point, d_func=None):
-        '''
-
-        :param new_point: a dictionary representing the new point
-        :param d_func:
-        :return:
-        '''
-        if new_point is None:
-            return
-        if self.random_cover:
-            self._load_inactive(new_point)
-        else:
-            self._load_active(new_point, d_func)
-
-    def _set_pnt_reward(self, pnt):
-        for i in range(self.current_size):
-            if self.reward_fun(pnt['x_feat'], self.buffer[i]['x_feat'], info=None):
-                return True
-        return False
-
-    def dilute(self, verbose=True):
-        _size = self.current_size
-        if self.current_size <= self.kmin:
             return False
-        dilute = False
-        dilutions = []
-        for i in range(self.current_size):
-            for j in range(i+1, self.current_size):
-                if self.reward_fun(self.buffer[i]['x_feat'], self.buffer[j]['x_feat'], info=None):
-                    if self.buffer[i]['distance'] < self.buffer[j]['distance']:
-                        dilutions.append(i)
-                    else:
-                        dilutions.append(j)
-                    dilute = True
-        if not dilute:
-            return False
-        dilutions = list(set(dilutions))
-        dilutions.sort(reverse=True)
-        for idx in dilutions:
-            del self.buffer[idx]
-        # self.fit_buffer_size()
-        if verbose:
-            print(f"Diluting: {_size} -> {self.current_size}")
-        return dilute
 
-    def draw(self, n, farthest=False):
+        return self.adjust_set(new_pnt, d_func)
+
+    def draw(self, n, replace=True):
         if self.current_size == 0:
             return None
-        if farthest:
-            s_idxs = np.argsort([b['distance'] for b in self.buffer])[-n:]
-        else:
-            s_idxs = np.random.choice(list(range(self.current_size)), n)
-        g_idxs = np.random.choice(list(range(self.current_size)), n)
+        s_idxs = np.random.choice(self.used_slots(), n, replace=replace)
         batch = []
-        for s_idx, g_idx in zip(s_idxs, g_idxs):
-            s_record = self.buffer[s_idx]
-            g_record = self.buffer[g_idx]
-            batch.append({'x': s_record['x'],
-                          'qpos': s_record['qpos'],
-                          'qvel': s_record['qvel'],
-                          'g': g_record['x_feat']})
+        for s_idx in s_idxs:
+            record = {key: self.buffer[s_idx][key].copy() for key in self.buffer[s_idx].keys()}
+            record['idx_in_buffer'] = s_idx
+            batch.append(record)
         return batch
 
     def _update_figure(self):
-        pts = [self.buffer[idx]['x'][self.vis_coords] for idx in range(self.current_size)]
+        pts = [self.buffer[idx]['o'][self.vis_coords] for idx in range(self.current_size)]
         if len(pts) == 0:
             return
-        prop_pts = None
-        if self.proposal and self.x_proposal['x'] is not None:
-            prop_pts = [self.x_proposal['x'][self.vis_coords]]
-            self.observer.update(pts, prop_pts)
-        else:
-            self.observer.update(pts, prop_pts)
+        self.observer.update(pts)
 
     def visualize(self):
         if self.vis and self.vis_coords is not None:
@@ -384,15 +234,22 @@ class MetricDiversifier:
         # save cover model
         self.save_model(save_path, message)
 
+    def open_slots(self):
+        return [idx for idx, b in enumerate(self.buffer) if b is None]
+
+    def used_slots(self):
+        return [idx for idx, b in enumerate(self.buffer) if b is not None]
+
     @property
     def current_size(self):
-        return len(self.buffer)
+        return len([True for b in self.buffer if b is not None])
+        # return len(self.buffer)
 
     @staticmethod
-    def init_record(x=None, x_feat=None, qpos=None, qvel=None, distance=-np.inf):
-        if x_feat is None:
-            x_feat = x
-        return {'x': x, 'x_feat': x_feat, 'c': 0, 'qpos': qpos, 'qvel': qvel, 'distance': distance, 'nn': None}
+    def init_record(o=None, ag=None, qpos=None, qvel=None):
+        if ag is None:
+            ag = o
+        return {'o': o.copy(), 'ag': ag.copy(), 'qpos': qpos.copy(), 'qvel': qvel.copy()}
 
     def save_model(self, save_path, message=None):
         if not os.path.exists(save_path):
@@ -403,7 +260,7 @@ class MetricDiversifier:
         with open(f_name, 'w') as outfile:
             json_str = json.dumps(self._buffer_2_dict(), indent=4, sort_keys=True)
             outfile.write(json_str)
-        print(f"saving cover: {f_name}")
+        print(f"saving cover: {f_name}, (size:{self.current_size})")
 
     @staticmethod
     def load_model(load_path):
@@ -417,18 +274,12 @@ class MetricDiversifier:
         for key, val in json_buffer.items():
             buffer.append(val)
         for i in range(len(buffer)):
-            buffer[i]['x'] = np.asarray(buffer[i]['x'])
-            buffer[i]['x_feat'] = np.asarray(buffer[i]['x_feat'])
+            buffer[i]['o'] = np.asarray(buffer[i]['o'])
+            buffer[i]['ag'] = np.asarray(buffer[i]['ag'])
         return buffer
 
 
 if __name__ == '__main__':
-
-    def reward_fun(s, g, **kwargs):
-        if np.linalg.norm(s - g, ord=2, axis=-1) < 0.1:
-            return 1
-        else:
-            return 0
 
     random_cover = False
     save_path = 'logs/2020-01-01'
@@ -437,7 +288,7 @@ if __name__ == '__main__':
     else:
         save_path = f"{save_path}/learned"
 
-    uniformizer = MetricDiversifier(k=1000, reward_fun=reward_fun, vis=True, load_p=1, vis_coords=[0, 1],
+    uniformizer = MetricDiversifier(k=1000, vis=True, load_p=1, vis_coords=[0, 1],
                                     # load_model='/home/nir/work/git/baselines/logs/01-01-2020/mca_cover/0_model.json'
                                     prop_adjust_interval=1000,
                                     random_cover=random_cover, save_path=save_path
@@ -463,7 +314,7 @@ if __name__ == '__main__':
     while True:
         # x = gaussian_mixture()
         x = random_walk(x)
-        pnt = uniformizer.init_record(x=x)
+        pnt = uniformizer.init_record(o=x)
         uniformizer.load_new_point(pnt)
         counter += 1
         if counter % 10000 == 0:

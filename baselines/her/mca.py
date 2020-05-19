@@ -1,37 +1,20 @@
-import copy
 import numpy as np
-from baselines.her.visualizer import VisObserver
+import random
 
 
 class MCA:
-    def __init__(self, policy, rollout_worker, evaluator, state_model, coord_dict, #n_samples=30,
-                 ss=False, sharing=False, vis_obs=False):
+    def __init__(self, policy, semi_metric, rollout_worker, evaluator, state_model, coord_dict, ss=False):
         self.policy = policy
+        self.semi_metric = semi_metric
+        self.ncells = len(state_model)
         self.rollout_worker = rollout_worker
         self.evaluator = evaluator
         self.state_model = state_model
         self.best_success_rate = -1
         self.ss = ss
-        self.sharing = sharing
         self.ex_experience = None
         self.coord_dict = coord_dict
-        self.tmp_point = state_model.init_record()
-        if vis_obs:
-            self.visualizer = VisObserver()
-
-    # def _buffer_sample(self, n, **kwargs):
-    #     if self.policy.buffer.current_size == 0:
-    #         return
-    #     inits = []
-    #     while len(inits) < n:
-    #         pnts = self.policy.buffer.sample(2)
-    #         if np.any(pnts['info_valid'] == 0):
-    #             continue
-    #         inits.append({'x': pnts['o'][0],
-    #                       'qpos': pnts['qpos'][0],
-    #                       'qvel': pnts['qvel'][0],
-    #                       'g': pnts['ag'][1]})
-    #     return inits
+        # self.tmp_point = state_model.init_record()
 
     @staticmethod
     def sample_2_dict(x):
@@ -44,37 +27,105 @@ class MCA:
         if self.policy.buffer.current_size == 0:
             return
         if not valids_only:
-            return self.policy.buffer.sample(n)
+            return self.policy.buffer.sample_regular(n)
         else:
             pnts = []
+            counter = 0
             while len(pnts) < n:
-                pnt = self.policy.buffer.sample(1)
+                counter += 1
+                pnt = self.policy.buffer.sample_regular(1)
                 if pnt['info_valid']:
                     pnts.append(pnt)
+                if counter > 100 * n:
+                    print(f"Failed to sample valid points from buffer")
+                    return None
             return self.sample_2_dict(pnts)
 
     def init_from_buffer(self, n):
         batch = self.sample_from_buffer(n, valids_only=True)
         if batch is None:
             return
-        p = np.random.permutation(n)
-        goals = [batch['ag'][pidx] for pidx in p]
         inits = []
-        for o, ag, qpos, qvel, g in zip(batch['o'], batch['ag'], batch['qpos'], batch['qvel'], goals):
-            inits.append({'x': o,
-                          'qpos': qpos,
-                          'qvel': qvel,
-                          'g': g})
+        for o, ag, qpos, qvel, ag in zip(batch['o'], batch['ag'], batch['qpos'], batch['qvel'], batch['ag']):
+            inits.append({'o': o.copy(), 'ag': ag.copy(), 'qpos': qpos.copy(), 'qvel': qvel.copy()})
         return inits
 
+    def draw_init(self, n, alpha=0.5):
+        # with probability alpha sample from the large replay buffer. Otherwise, sample from the diverse state model
+        # goals and inits are sampled from different states
+        if np.random.binomial(n=1, p=alpha):
+            valid_cells = [midx for midx, m in enumerate(self.state_model) if m.current_size > 0]
+            if len(valid_cells) == 0:
+                return
+            inits = self.state_model[random.choice(valid_cells)].draw(n)
+            ginits = self.state_model[random.choice(valid_cells)].draw(n)
+        else:
+            inits = self.init_from_buffer(n)
+            ginits = self.init_from_buffer(n)
+        if inits is None or ginits is None:
+            return
+        # stitch init and goal together
+        for idx, init in enumerate(inits):
+            init["g"] = ginits[idx]["ag"].copy()
+            if self.semi_metric:
+                for key in init.keys():
+                    if key != 'g':
+                        init[key] = None
+        return inits
+
+    def calculate_cell_idx(self, ags):
+        n = len(ags)
+        root_o_mat = np.repeat(np.expand_dims(self.rollout_worker.initial_o[0], 0), repeats=n, axis=0)
+        root_ag_mat = np.repeat(np.expand_dims(self.rollout_worker.initial_ag[0], 0), repeats=n, axis=0)
+        _, Qs = self.policy.get_actions(o=root_o_mat, ag=root_ag_mat, g=ags, compute_Q=True, use_target_net=True)
+        return self.q2cellidx(Qs.squeeze(axis=1))
+
+    def refresh_cells(self, n):
+        if not self.semi_metric:
+            return
+        for cidx in range(self.ncells):
+            if self.state_model[cidx].current_size == 0:
+                print(f"Cell {cidx} size is {self.state_model[cidx].current_size}. Skipping refreshment")
+                continue
+            n = np.minimum(n, self.state_model[cidx].current_size)
+            pts = self.state_model[cidx].draw(n, replace=False)
+            idxs_in_buffer = [pnt['idx_in_buffer'] for pnt in pts]
+
+            assert len([True for pnt in pts if pnt['ag'] is None]) == 0
+
+            ags = np.asarray([pnt['ag'] for pnt in pts])
+            current_cidxs = self.calculate_cell_idx(ags=ags)
+            nrefreshes = 0
+            for current_idx, idx_in_buffer in zip(current_cidxs, idxs_in_buffer):
+                if current_idx != cidx and (idx_in_buffer in self.state_model[cidx].used_slots()):
+                    self.state_model[cidx].invalidate_idx(idx_in_buffer)
+                    nrefreshes += 1
+            print(f'Cell {cidx} size is {self.state_model[cidx].current_size}. #refreshments {nrefreshes}')
+
     def update_metric_model(self, n):
-        # batch = self.policy.buffer.sample(100)
         batch = self.sample_from_buffer(n, valids_only=True)
         if batch is None:
             return
-        for o, ag, qpos, qvel in zip(batch['o'], batch['ag'], batch['qpos'], batch['qvel']):
-            new_point = self.state_model.init_record(x=o, x_feat=ag, qpos=qpos, qvel=qvel)
-            self.state_model.load_new_point(new_point, d_func=self.policy.get_actions)
+        # in semi metric mode we decide of cell idx by calculating distance from root
+        if self.semi_metric:
+            cidxs = self.calculate_cell_idx(ags=batch['ag'])
+            state_model_dfunc = None
+        else:
+            cidxs = np.zeros(len(batch['o']), dtype=np.int)
+            state_model_dfunc = self.policy.get_actions
+
+        assert len(cidxs) == len(batch['o'])
+        assert cidxs.min() >= 0
+        assert cidxs.max() < self.rollout_worker.T
+        counter, nupdates = 0, 0
+        for o, ag, qpos, qvel, cidx in zip(batch['o'], batch['ag'], batch['qpos'], batch['qvel'], cidxs):
+            assert ag is not None
+            new_point = self.state_model[int(cidx)].init_record(o=o, ag=ag, qpos=qpos, qvel=qvel)
+            updated = self.state_model[cidx].load_new_point(new_point, d_func=state_model_dfunc)
+            nupdates += updated
+            counter += 1
+            print(f"\r>> Updating metric model {counter}/{int(n)}", end='')
+        print(f' ... Done!, # of updates: {nupdates}')
 
     def load_episode(self, episode):
         if episode is None:
@@ -114,47 +165,9 @@ class MCA:
         if 's_info' in episode:
             del episode['s_info']
 
-    def store_ex_episode(self, episode):
-        if episode is None:
-            return
-        if 's_info' in episode:
-            del episode['s_info']
-        if self.sharing:
-            self.ex_experience = copy.deepcopy(episode)
-        else:
-            self.ex_experience = episode
+    def q2cellidx(self, q_vals):
+        return np.clip(q_vals, 1e-4, self.rollout_worker.T - 1e-4).astype(np.int)
 
-    def overload_sg(self, episode, mca_episode):
-        if episode is None or mca_episode is None:
-            return episode
-        for key, val in mca_episode.items():
-            if key in episode:
-                if key == 'g' or key == 'ag':
-                    val = val[..., self.coord_dict["g"]]
-                episode[key] = np.concatenate([episode[key], val], axis=0)
-        return episode
-
-    def overload_ss(self, mca_episode):
-        if not self.sharing:
-            return mca_episode
-        if mca_episode is None:
-            return None
-        for key, val in self.ex_experience.items():
-            if key == 'g' or key == 'ag':
-                continue
-            mca_episode[key] = np.concatenate([mca_episode[key], val], axis=0)
-
-        # achieved goal is simply the current state
-        mca_episode['ag'] = np.concatenate([mca_episode['ag'], self.ex_experience['o']], axis=0)
-
-        # extract goal from a random state in the set of trajectories
-        goals = np.reshape(self.ex_experience['o'][:, :-1, :], [-1, self.ex_experience['o'].shape[-1]])
-        np.random.shuffle(goals)
-        mca_episode['g'] = np.concatenate([mca_episode['g'], np.reshape(goals, self.ex_experience['o'][:, :-1, :].shape)], axis=0)
-
-        # remove Q and root Q from mca_episode dictionary because it is no longer needed and it is not augmented,
-        # therefore has inadequate shape.
-        del mca_episode['Qs']
-        del mca_episode['root_Qs']
-
-        return mca_episode
+    def update_age(self):
+        for state_model in self.state_model:
+            state_model.age += 1

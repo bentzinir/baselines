@@ -99,8 +99,7 @@ def train(args, extra_args):
                                video_length=args.save_video_length)
 
     # create non-vectorized environment for evaluating cover distance
-    alg_kwargs['cover_measure_env'] = gym.make(env_id, distance_threshold=alg_kwargs['cover_distance_threshold'],
-                                               mode=alg_kwargs['mode'])
+    alg_kwargs['cover_measure_env'] = gym.make(env_id, **alg_kwargs)
 
     if args.network:
         alg_kwargs['network'] = args.network
