@@ -193,11 +193,11 @@ def main(args):
     results["train success"]["xscale"] = 1
 
     results["hit time rate"] = dict()
-    results["hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=True, scale=20)
+    results["hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=True, scale=50)
     results["hit time rate"]["xscale"] = 1
 
     results["train hit time rate"] = dict()
-    results["train hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="train/hit_time_rate", normalize=True, scale=20)
+    results["train hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="train/hit_time_rate", normalize=True, scale=50)
     results["train hit time rate"]["xscale"] = 1
 
     results["Q"] = dict()
@@ -207,6 +207,18 @@ def main(args):
     results["goal std"] = dict()
     results["goal std"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="stats_g/std", normalize=True, scale=100)
     results["goal std"]["xscale"] = 1
+
+    # v = results["Q"]["mean"] + results["hit time rate"]["mean"]
+
+    # horizon = parse_horizon(logfile=f"{log_directory}/log.txt")
+
+    # q_rate = horizon - results["hit time rate"]["mean"]
+
+    # q_gap = 100 * results["Q"]["mean"] / q_rate
+
+    # results["q_gap"] = dict()
+    # results["q_gap"]["mean"] = q_gap
+    # results["q_gap"]["xscale"] = 1
 
     # for k in [100, 300, 500, 700]:
     #     fmean = f"k: {k}, RT mean"

@@ -58,7 +58,7 @@ def mpi_average(value):
 
 
 def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
-          save_path, demo_file, mca, random_cover=False, trainable=True, cover_measure_env=None, state_model_vec=None, **kwargs):
+          save_path, demo_file, mca, random_cover=False, trainable=True, **kwargs):
     rank = MPI.COMM_WORLD.Get_rank()
 
     logger.info("Training...")
@@ -72,12 +72,23 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         # train
         rollout_worker.clear_history()
         mca.rollout_worker.clear_history()
+        invalids = []
         for n1 in range(n_cycles):
             random = n1 % 10 == 0
             # random = False
             episode = rollout_worker.generate_rollouts()
             inits = mca.draw_init(n_mca_envs)
             mca_episode = mca.rollout_worker.generate_rollouts(ex_init=inits, random=random_cover or random or not trainable)
+
+            ##################
+            # exclude invalid episodes
+            valid_episodes = np.all(mca_episode['info_valid'], axis=1).squeeze(axis=1)
+            invalids.append(np.sum(valid_episodes == 0) / len(valid_episodes))
+            # load inputs into buffers
+            mca_episode_valid = dict()
+            for key in mca_episode.keys():
+                mca_episode_valid[key] = mca_episode[key][valid_episodes, ...]
+            ##################
 
             if not trainable:
                 continue
@@ -86,7 +97,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             #     continue
 
             policy.store_episode(episode)
-            mca.policy.store_episode(mca_episode)
+            mca.policy.store_episode(mca_episode_valid)
 
             for n2 in range(n_batches):
                 policy.train()
@@ -95,6 +106,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             mca.policy.update_target_net()
             mca.update_age()
 
+        print(f"Percentage of invalid episodes: {np.asarray(invalids).mean()}")
         mca.refresh_cells(n=500)
         mca.update_metric_model(n=5e3)
 
@@ -109,9 +121,6 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
                                             random=random_cover)
 
         if epoch % policy_save_interval == 0:
-            # hit_rate, roam_time = xy_cover(cover_measure_env, mca.state_model.buffer, nsamples=1, nsteps=20)
-            # logger.record_tabular(f'k: {mca.state_model.k}, RT mean', roam_time.mean())
-            # logger.record_tabular(f'k: {mca.state_model.k}, RT std', roam_time.std())
             [state_model.save(message=f"epoch_{epoch}") for state_model in mca.state_model]
 
         # record logs
@@ -247,12 +256,13 @@ def learn(*, network, env, mca_env, total_timesteps,
     mca_active = kwargs["mode"] in ["exploration_module", "maximum_span"]
     mca_load_path = set_default_value(kwargs, 'mca_load_path', None)
     mca_exploration = set_default_value(kwargs, 'mca_exploration', 'eps_greedy')
-    mca_action_l2 = set_default_value(kwargs, 'mca_action_l2', 0)
+    mca_action_l2 = set_default_value(kwargs, 'mca_action_l2', 1)
     ss = set_default_value(kwargs, 'ss', False)
     trainable = set_default_value(kwargs, 'trainable', True)
     random_cover = set_default_value(kwargs, 'random_cover', False)
     semi_metric = set_default_value(kwargs, 'semi_metric', False)
     k = set_default_value(kwargs, 'k', 1000)
+    feature_w = set_default_value(params, 'feature_w', None)
 
     mca_policy, mca_rw, mca_evaluator, mca_params, coord_dict, reward_fun = prepare_agent(mca_env, eval_env,
                                                                                           active=mca_active,
@@ -263,20 +273,6 @@ def learn(*, network, env, mca_env, total_timesteps,
                                                                                           load_path=mca_load_path
                                                                                           )
 
-    load_p = 1
-
-    # from baselines.her.state_model_vec import make_state_model_vec
-    # state_model_vec = make_state_model_vec(k_vec=[100, 200, 400],
-    #                                        vis=True,
-    #                                        vis_coords=coord_dict['vis'],
-    #                                        load_path=kwargs['load_mca_path'],
-    #                                        log_path=log_path,
-    #                                        random_cover=kwargs["random_cover"],
-    #                                        load_prob=load_p,
-    #                                        phase_length=phase_length,
-    #                                        dilute_at_goal=kwargs['dilute_at_goal']
-    #                                        )
-
     if semi_metric:
         ncells = rollout_worker.T
     else:
@@ -286,11 +282,12 @@ def learn(*, network, env, mca_env, total_timesteps,
     for cidx in range(ncells):
         state_model_vec.append(MetricDiversifier(k=k,
                                                  vis=False,
+                                                 feature_w=feature_w,
                                                  vis_coords=coord_dict['vis'],
                                                  load_model=kwargs['load_mca_path'],
                                                  save_path=f"{log_path}/{cidx}/mca_cover",
                                                  random_cover=random_cover,
-                                                 load_p=load_p,
+                                                 load_p=1,
                                                  ))
 
     mca = MCA(policy=mca_policy,
@@ -321,7 +318,6 @@ def learn(*, network, env, mca_env, total_timesteps,
                  random_cover=random_cover,
                  trainable=trainable,
                  cover_measure_env=kwargs['cover_measure_env'],
-                 # state_model_vec=state_model_vec
                  )
 
 

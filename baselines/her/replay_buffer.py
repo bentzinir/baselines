@@ -77,6 +77,9 @@ class ReplayBuffer:
         assert np.all(np.array(batch_sizes) == batch_sizes[0])
         batch_size = batch_sizes[0]
 
+        if batch_size == 0:
+            return
+
         with self.lock:
             idxs = self._get_storage_idx(batch_size)
 

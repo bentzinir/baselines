@@ -34,6 +34,19 @@ DEFAULT_ENV_PARAMS = {
     },
     'HandManipulateBlock10-v0': {
         'n_cycles': 2,
+        'feature_w': [1, 1, 1, 10, 10, 10, 10]
+    },
+    'HandManipulateBlock20-v0': {
+        'feature_w': [1, 1, 1, 10, 10, 10, 10]
+    },
+    'HandManipulateBlock50-v0': {
+        'feature_w': [1, 1, 1, 10, 10, 10, 10]
+    },
+    'HandManipulateBlock100-v0': {
+        'feature_w': [1, 1, 1, 10, 10, 10, 10]
+    },
+    'HandManipulateBlock-v0': {
+        'feature_w': [1, 1, 1, 10, 10, 10, 10]
     },
     'Reacher10-v2': {
         'n_cycles': 2,

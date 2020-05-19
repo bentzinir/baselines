@@ -83,7 +83,7 @@ def play_policy(env, env_id, load_path=None, cover_path=None, semi_metric=False,
     tf_util.load_variables(load_path)
     print(f"Loaded model: {load_path}")
     cover = MetricDiversifier.load_model(cover_path)
-    obs = reset_env(env, cover, mode='intrinsic')
+    obs = reset_env(env, cover, mode='extrinsic')
     i = 0
     while True:
         i += 1
@@ -94,15 +94,17 @@ def play_policy(env, env_id, load_path=None, cover_path=None, semi_metric=False,
         # if i % 10 == 0:
         #     action = env.action_space.sample()
         obs, reward, done, info = env.step(action)
-        # print(f"achieved: {obs['achieved_goal']}, desired: {obs['desired_goal']}, obs: {obs['observation'][:6]}")
-        if i % 50 == 0 or info['is_success']:
+        success = info['is_success']
+        invalid = not info['valid']
+        timeout = i % 50 == 0
+        done = success or invalid or timeout
+        if done:
             if cover is None or semi_metric:
                 reset_env(env, cover, mode='intrinsic')
             else:
                 reset_env(env, cover, mode='extrinsic')
             obs = set_goal(env, cover)
-            if info['is_success']:
-                input(f"success at:{i}")
+            input(f"success: {success}, invalid: {invalid}, timeout: {timeout}")
             i = 0
     env.close()
 

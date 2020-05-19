@@ -43,14 +43,14 @@ class VisObserver:
 
 
 class MetricDiversifier:
-    def __init__(self, k, random_cover=False, load_p=1, vis=False, vis_coords=None, load_model=None, save_path=None, **kwargs):
+    def __init__(self, k, load_p=1, vis=False, vis_coords=None, load_model=None, save_path=None, feature_w=None, **kwargs):
         self.k = k
         self.k_approx = k // 10
         self.M = -np.inf * np.ones((self.k, self.k))
         self.age = np.inf * np.ones(self.k)
         self.buffer = [None for _ in range(self.k)]
         [self.invalidate_idx(idx) for idx in range(self.k)]
-        self.random_cover = random_cover
+        self.feature_w = feature_w
         self.save_path = save_path
         self.load_p = load_p
         self.vis = vis
@@ -85,8 +85,7 @@ class MetricDiversifier:
             i += 1
         return z
 
-    @staticmethod
-    def quasimetric(x1_o, x1_ag, x2_o, x2_ag, d_func=None, feat_distance=True):
+    def quasimetric(self, x1_o, x1_ag, x2_o, x2_ag, d_func=None, feat_distance=True):
         '''
         :param x1_o: set of points
         :param x2_o: set of points
@@ -96,12 +95,12 @@ class MetricDiversifier:
         '''
         if d_func is None:
             if feat_distance:
-                # x1x2_distance = np.linalg.norm(x1_ag - x2_ag, ord=2, axis=1)
-                # TODo: remove after debug
-                distance_mat = ((x1_ag - x2_ag) ** 2)
-                weight_mat = np.ones_like(distance_mat)
-                weight_mat[..., 3:] = 10
-                x1x2_distance = (weight_mat * distance_mat).sum(axis=1)
+                if self.feature_w is None:
+                    x1x2_distance = np.linalg.norm(x1_ag - x2_ag, ord=2, axis=1)
+                else:
+                    distance_mat = ((x1_ag - x2_ag) ** 2)
+                    weight_mat = np.repeat(np.expand_dims(self.feature_w, 0), repeats=distance_mat.shape[0], axis=0)
+                    x1x2_distance = (weight_mat * distance_mat).sum(axis=1)
             else:
                 x1x2_distance = np.linalg.norm(x1_o - x2_o, ord=2, axis=1)
         else:
@@ -281,17 +280,11 @@ class MetricDiversifier:
 
 if __name__ == '__main__':
 
-    random_cover = False
     save_path = 'logs/2020-01-01'
-    if random_cover:
-        save_path = f"{save_path}/random"
-    else:
-        save_path = f"{save_path}/learned"
 
     uniformizer = MetricDiversifier(k=1000, vis=True, load_p=1, vis_coords=[0, 1],
-                                    # load_model='/home/nir/work/git/baselines/logs/01-01-2020/mca_cover/0_model.json'
                                     prop_adjust_interval=1000,
-                                    random_cover=random_cover, save_path=save_path
+                                    save_path=save_path
                                     )
 
     def gaussian_mixture():
@@ -319,4 +312,4 @@ if __name__ == '__main__':
         counter += 1
         if counter % 10000 == 0:
             uniformizer.save(save_path=save_path, message=counter)
-            print(f"random cover;{random_cover}, epoch: {counter}, cover size: {uniformizer.current_size}")
+            print(f"epoch: {counter}, cover size: {uniformizer.current_size}")
