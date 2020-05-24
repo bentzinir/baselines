@@ -66,6 +66,9 @@ DEFAULT_ENV_PARAMS = {
     'Ant10-v2': {
         'n_cycles': 2,
     },
+    'AntMaze10-v2': {
+        'n_cycles': 2,
+    },
 }
 
 

@@ -71,7 +71,7 @@ def plain_loop(env, action_repetition=1, clip_range=0.5, **kwargs):
     env.close()
 
 
-def play_policy(env, env_id, load_path=None, cover_path=None, semi_metric=False, **kwargs):
+def play_policy(env, env_id, T=20, load_path=None, cover_path=None, semi_metric=False, **kwargs):
     params = config.DEFAULT_PARAMS
     _override_params = copy.deepcopy(kwargs)
     params.update(**_override_params)
@@ -96,7 +96,7 @@ def play_policy(env, env_id, load_path=None, cover_path=None, semi_metric=False,
         obs, reward, done, info = env.step(action)
         success = info['is_success']
         invalid = not info['valid']
-        timeout = i % 50 == 0
+        timeout = i % T == 0
         done = success or invalid or timeout
         if done:
             if cover is None or semi_metric:

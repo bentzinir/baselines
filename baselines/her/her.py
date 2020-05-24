@@ -58,7 +58,7 @@ def mpi_average(value):
 
 
 def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
-          save_path, demo_file, mca, random_cover=False, trainable=True, **kwargs):
+          save_path, demo_file, mca, random_cover=False, trainable=True, invalidate_episodes=False, **kwargs):
     rank = MPI.COMM_WORLD.Get_rank()
 
     logger.info("Training...")
@@ -73,7 +73,9 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         rollout_worker.clear_history()
         mca.rollout_worker.clear_history()
         invalids = []
+        lengths = []
         for n1 in range(n_cycles):
+            print(n1)
             random = n1 % 10 == 0
             # random = False
             episode = rollout_worker.generate_rollouts()
@@ -82,22 +84,25 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
 
             ##################
             # exclude invalid episodes
-            valid_episodes = np.all(mca_episode['info_valid'], axis=1).squeeze(axis=1)
-            invalids.append(np.sum(valid_episodes == 0) / len(valid_episodes))
-            # load inputs into buffers
-            mca_episode_valid = dict()
-            for key in mca_episode.keys():
-                mca_episode_valid[key] = mca_episode[key][valid_episodes, ...]
+            if invalidate_episodes:
+                valid_episodes = np.all(mca_episode['info_valid'], axis=1).squeeze(axis=1)
+                invalids.append(np.sum(valid_episodes == 0) / len(valid_episodes))
+                # load inputs into buffers
+                for key in mca_episode.keys():
+                    mca_episode[key] = mca_episode[key][valid_episodes, ...]
+            else:
+                invalids.append(False)
+            lengths.append(mca_episode['o'].shape[1])
+
             ##################
 
-            if not trainable:
-                continue
-
-            # if random:
-            #     continue
-
             policy.store_episode(episode)
-            mca.policy.store_episode(mca_episode_valid)
+            mca.policy.store_episode(mca_episode)
+
+            # TODO: remove after debug
+            if mca.policy.buffer.current_size == 0:
+                continue
+                print('Empty buffer')
 
             for n2 in range(n_batches):
                 policy.train()
@@ -106,7 +111,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             mca.policy.update_target_net()
             mca.update_age()
 
-        print(f"Percentage of invalid episodes: {np.asarray(invalids).mean()}")
+        print(f"Percentage of invalidations: {np.asarray(invalids).mean()}, average ep length: {np.asarray(lengths).mean()}")
         mca.refresh_cells(n=500)
         mca.update_metric_model(n=5e3)
 
@@ -263,6 +268,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     semi_metric = set_default_value(kwargs, 'semi_metric', False)
     k = set_default_value(kwargs, 'k', 1000)
     feature_w = set_default_value(params, 'feature_w', None)
+    invalidate_episodes = set_default_value(kwargs, 'invalidate_episodes', False)
 
     mca_policy, mca_rw, mca_evaluator, mca_params, coord_dict, reward_fun = prepare_agent(mca_env, eval_env,
                                                                                           active=mca_active,
@@ -318,6 +324,7 @@ def learn(*, network, env, mca_env, total_timesteps,
                  random_cover=random_cover,
                  trainable=trainable,
                  cover_measure_env=kwargs['cover_measure_env'],
+                 invalidate_episodes=invalidate_episodes
                  )
 
 
