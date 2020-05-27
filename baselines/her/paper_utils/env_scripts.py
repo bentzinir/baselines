@@ -43,7 +43,7 @@ def scan_cover(env, action_repetition=1, cover_path=None, **kwargs):
     obs = reset_env(env, cover, mode='intrinsic')
     for i in range(100000):
         env.render()
-        time.sleep(.3)
+        time.sleep(.1)
         if i % action_repetition == 0:
             a = env.action_space.sample()
         obs, reward, done, info = env.step(a)
@@ -60,7 +60,7 @@ def plain_loop(env, action_repetition=1, clip_range=0.5, **kwargs):
     while True:
         i += 1
         env.render()
-        time.sleep(.01)
+        time.sleep(.1)
         if i % action_repetition == 0:
             a = np.clip(env.action_space.sample(), -clip_range, clip_range)
         o, r, d, info = env.step(a)
@@ -71,7 +71,7 @@ def plain_loop(env, action_repetition=1, clip_range=0.5, **kwargs):
     env.close()
 
 
-def play_policy(env, env_id, load_path=None, cover_path=None, semi_metric=False, **kwargs):
+def play_policy(env, env_id, T=20, load_path=None, cover_path=None, semi_metric=False, **kwargs):
     params = config.DEFAULT_PARAMS
     _override_params = copy.deepcopy(kwargs)
     params.update(**_override_params)
@@ -96,7 +96,8 @@ def play_policy(env, env_id, load_path=None, cover_path=None, semi_metric=False,
         obs, reward, done, info = env.step(action)
         success = info['is_success']
         invalid = not info['valid']
-        timeout = i % 50 == 0
+        invalid = False
+        timeout = i % T == 0
         done = success or invalid or timeout
         if done:
             if cover is None or semi_metric:
