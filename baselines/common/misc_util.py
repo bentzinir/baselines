@@ -245,6 +245,7 @@ def pickle_load(path, compression=False):
 
 def set_default_value(params, name, val):
     if name in params:
+        print(f"----------------Setting value of {name} to: {params[name]}----------------")
         return params[name]
     else:
         return val
