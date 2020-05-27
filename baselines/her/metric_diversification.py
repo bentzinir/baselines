@@ -154,7 +154,9 @@ class MetricDiversifier:
 
         distances_to_new_pnt = self.quasimetric(x1_o=set_o_mat, x1_ag=set_ag_mat, x2_o=newpnt_o_mat, x2_ag=newpnt_ag_mat, d_func=d_func)
 
-        ##################################
+        ####################################
+        # Greedy Packing Improvement (GPI) #
+        ####################################
         b_idx = -1
         b_delta = -np.inf
         for j in ref_idx_set:
