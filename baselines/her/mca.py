@@ -82,6 +82,7 @@ class MCA:
 
     def refresh_cells(self, n):
         if not self.semi_metric:
+            print(f'state model size {self.state_model[0].current_size}')
             return
         for cidx in range(self.ncells):
             if self.state_model[cidx].current_size == 0:
@@ -120,7 +121,7 @@ class MCA:
         counter, nupdates = 0, 0
         for o, ag, qpos, qvel, cidx in zip(batch['o'], batch['ag'], batch['qpos'], batch['qvel'], cidxs):
             assert ag is not None
-            new_point = self.state_model[int(cidx)].init_record(o=o, ag=ag, qpos=qpos, qvel=qvel)
+            new_point = self.state_model[int(cidx)].init_record(o=o.copy(), ag=ag.copy(), qpos=qpos.copy(), qvel=qvel.copy())
             updated = self.state_model[cidx].load_new_point(new_point, d_func=state_model_dfunc)
             nupdates += updated
             counter += 1

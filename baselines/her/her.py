@@ -75,7 +75,6 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         invalids = []
         lengths = []
         for n1 in range(n_cycles):
-            print(n1)
             random = n1 % 10 == 0
             # random = False
             episode = rollout_worker.generate_rollouts()
@@ -113,7 +112,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
 
         print(f"Percentage of invalidations: {np.asarray(invalids).mean()}, average ep length: {np.asarray(lengths).mean()}")
         mca.refresh_cells(n=500)
-        mca.update_metric_model(n=5e3)
+        mca.update_metric_model(n=10e3)
 
         # test
         evaluator.clear_history()
@@ -287,6 +286,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     state_model_vec = []
     for cidx in range(ncells):
         state_model_vec.append(MetricDiversifier(k=k,
+                                                 reward_func=reward_fun,
                                                  vis=False,
                                                  feature_w=feature_w,
                                                  vis_coords=coord_dict['vis'],

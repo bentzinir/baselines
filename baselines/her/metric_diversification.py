@@ -43,14 +43,15 @@ class VisObserver:
 
 
 class MetricDiversifier:
-    def __init__(self, k, load_p=1, vis=False, vis_coords=None, load_model=None, save_path=None, feature_w=None, **kwargs):
+    def __init__(self, k, reward_func, load_p=1, vis=False, vis_coords=None, load_model=None, save_path=None, feature_w=None, **kwargs):
         self.k = k
-        self.k_approx = k // 10
+        self.k_approx = k  # k // 10
         self.M = -np.inf * np.ones((self.k, self.k))
         self.age = np.inf * np.ones(self.k)
         self.buffer = [None for _ in range(self.k)]
         [self.invalidate_idx(idx) for idx in range(self.k)]
         self.feature_w = feature_w
+        self.reward_func = reward_func
         self.save_path = save_path
         self.load_p = load_p
         self.vis = vis
@@ -62,10 +63,9 @@ class MetricDiversifier:
             print(f"Loaded model: {load_model}")
             print(f"Model size: {self.current_size}")
 
-    def _buffer_2_array(self, val, idxs=None):
-        if idxs is None:
-            idxs = list(range(self.current_size))
-        return np.asarray([self.buffer[idx][val] for idx in idxs])
+    def _buffer_2_array(self, val, idxs):
+        array = np.asarray([self.buffer[idx][val] for idx in idxs])
+        return array
 
     def _buffer_2_dict(self):
         z = {}
@@ -105,14 +105,21 @@ class MetricDiversifier:
                 x1x2_distance = np.linalg.norm(x1_o - x2_o, ord=2, axis=1)
         else:
             _, Q = d_func(o=x1_o, ag=x1_ag, g=x2_ag, compute_Q=True, use_target_net=True)
-            x1x2_distance = - Q.squeeze()
+            if Q.ndim == 2:
+                Q = Q.squeeze()
+            x1x2_distance = - Q
         return x1x2_distance
 
-    def prepare_dfunc_inputs(self, pnt):
-        set_o_mat = self._buffer_2_array(val='o', idxs=list(range(self.current_size)))
-        set_ag_mat = self._buffer_2_array(val='ag', idxs=list(range(self.current_size)))
-        pnt_o_mat = np.repeat(np.expand_dims(pnt['o'], 0), repeats=self.current_size, axis=0)
-        pnt_ag_mat = np.repeat(np.expand_dims(pnt['ag'], 0), repeats=self.current_size, axis=0)
+    def prepare_dfunc_inputs(self, pnt, set_idxs=None):
+        if set_idxs is None:
+            set_idxs = self.used_slots()
+        set_o_mat = self._buffer_2_array(val='o', idxs=set_idxs)
+        set_ag_mat = self._buffer_2_array(val='ag', idxs=set_idxs)
+        pnt_o_mat = np.repeat(np.expand_dims(pnt['o'], 0), repeats=len(set_idxs), axis=0)
+        pnt_ag_mat = np.repeat(np.expand_dims(pnt['ag'], 0), repeats=len(set_idxs), axis=0)
+        if len(self.used_slots()) == 0:
+            set_o_mat = np.empty_like(pnt_o_mat)
+            set_ag_mat = np.empty_like(pnt_ag_mat)
         return set_o_mat, set_ag_mat, pnt_o_mat, pnt_ag_mat
 
     def adjust_set(self, new_pnt, d_func):
@@ -122,21 +129,23 @@ class MetricDiversifier:
             if pnt['ag'] is None:
                 assert False
 
-        ref_idx_set = np.random.choice(self.used_slots(), self.k_approx, replace=False)
+        nrefs = np.minimum(len(self.used_slots()), self.k_approx)
 
-        assert len(self.open_slots()) == 0
+        ref_idx_set = np.random.choice(self.used_slots(), nrefs, replace=False)
 
         # refresh outdated matrix entries
         for idx in ref_idx_set:
             if self.age[idx] > 10:
-                pnt = self.buffer[idx]
-                set_o_mat, set_ag_mat, pnt_o_mat, pnt_ag_mat = self.prepare_dfunc_inputs(pnt)
+                rpnt = self.buffer[idx]
+                set_o_mat, set_ag_mat, pnt_o_mat, pnt_ag_mat = self.prepare_dfunc_inputs(rpnt)
+
                 # update "from" distances pnt -> set
                 self.M[idx] = self.quasimetric(x1_o=pnt_o_mat, x1_ag=pnt_ag_mat, x2_o=set_o_mat, x2_ag=set_ag_mat, d_func=d_func)
-                self.M[idx, idx] = np.inf
 
                 # update "to" distances set -> pnt
                 self.M[:, idx] = self.quasimetric(x1_o=set_o_mat, x1_ag=set_ag_mat, x2_o=pnt_o_mat, x2_ag=pnt_ag_mat, d_func=d_func)
+
+                # update self distance to +inf to exclude from downstream calculation
                 self.M[idx, idx] = np.inf
 
                 self.age[idx] = 0
@@ -157,24 +166,41 @@ class MetricDiversifier:
                 b_idx = j
         ##################################
 
-        # FORCED UPDATE
+        # FORCED UPDATE: currently disabled (p=0)
         if b_idx == -1:
-            if np.random.binomial(n=1, p=0.001):
-                b_idx = random.choice(range(self.current_size))
-                # print(f"Forced update")
+            if np.random.binomial(n=1, p=0):
+                b_idx = random.choice(self.used_slots())
+
+        # Early escape if no update is needed
+        if b_idx == -1:
+            return False
+
+        # Do not take new point if it overlaps any set point (besides b_idx)
+        idxs = self.used_slots()
+        idxs.remove(b_idx)
+        if self.pnt_set_overlap(new_pnt, idxs=idxs):
+            b_idx = -1
 
         if b_idx >= 0:
 
-            self.M[b_idx] = self.quasimetric(x1_o=newpnt_o_mat, x1_ag=newpnt_ag_mat, x2_o=set_o_mat, x2_ag=set_ag_mat, d_func=d_func)
+            distances_from_newpnt = self.quasimetric(x1_o=newpnt_o_mat, x1_ag=newpnt_ag_mat, x2_o=set_o_mat, x2_ag=set_ag_mat, d_func=d_func)
 
-            self.M[:, b_idx] = distances_to_new_pnt
-
-            self.M[b_idx, b_idx] = np.inf
-
-            # replace in buffer
-            self.buffer[b_idx] = new_pnt
+            self.occupy_idx(new_pnt, b_idx, ref_idxs=self.used_slots(), distances_to_newpnt=distances_to_new_pnt, distances_from_newpnt=distances_from_newpnt)
 
         return b_idx >= 0
+
+    def occupy_idx(self, new_pnt, insert_idx, ref_idxs, distances_to_newpnt=None, distances_from_newpnt=None):
+
+        self.M[insert_idx, ref_idxs] = distances_from_newpnt
+
+        self.M[ref_idxs, insert_idx] = distances_to_newpnt
+
+        self.M[insert_idx, insert_idx] = np.inf
+
+        # replace in buffer
+        self.buffer[insert_idx] = new_pnt
+
+        self.age[insert_idx] = 0
 
     def invalidate_idx(self, idx):
         self.M[idx] = -np.inf
@@ -183,20 +209,36 @@ class MetricDiversifier:
         self.buffer[idx] = None
         self.age[idx] = np.inf
 
+    def pnt_set_overlap(self, pnt, idxs=None):
+        if idxs is None:
+            idxs = self.used_slots()
+        for refidx in idxs:
+            if self.reward_func(ag_2=pnt['ag'], g=self.buffer[refidx]['ag'], info={}):
+                return True
+        return False
+
     def load_new_point(self, new_pnt, d_func=None):
         if new_pnt is None:
             return False
-        # load new_pnt if the buffer is empty
-        if 'g' in new_pnt.keys():
-            a = 1
-        if self.current_size < self.k:
-            self.buffer[random.choice(self.open_slots())] = new_pnt
-            # self.buffer.append(new_pnt)
-            return False
-        if not np.random.binomial(n=1, p=self.load_p):
-            return False
 
-        return self.adjust_set(new_pnt, d_func)
+        # Not fully occupied
+        if len(self.open_slots()) > 0:
+            # check for overlaps. If ok - load
+            if self.pnt_set_overlap(new_pnt):
+                return False
+            else:
+                set_o_mat, set_ag_mat, newpnt_o_mat, newpnt_ag_mat = self.prepare_dfunc_inputs(new_pnt)
+                distances_from = self.quasimetric(x1_o=newpnt_o_mat, x1_ag=newpnt_ag_mat, x2_o=set_o_mat,
+                                                  x2_ag=set_ag_mat, d_func=d_func)
+                distances_to = self.quasimetric(x1_o=set_o_mat, x1_ag=set_ag_mat, x2_o=newpnt_o_mat,
+                                                x2_ag=newpnt_ag_mat, d_func=d_func)
+                self.occupy_idx(new_pnt, insert_idx=random.choice(self.open_slots()), ref_idxs=self.used_slots(),
+                                distances_from_newpnt=distances_from, distances_to_newpnt=distances_to)
+                return True
+
+        # Fully occupied
+        else:
+            return self.adjust_set(new_pnt, d_func)
 
     def draw(self, n, replace=True):
         if self.current_size == 0:
@@ -210,7 +252,7 @@ class MetricDiversifier:
         return batch
 
     def _update_figure(self):
-        pts = [self.buffer[idx]['o'][self.vis_coords] for idx in range(self.current_size)]
+        pts = [self.buffer[idx]['o'][self.vis_coords] for idx in self.used_slots()]
         if len(pts) == 0:
             return
         self.observer.update(pts)
@@ -248,7 +290,7 @@ class MetricDiversifier:
     def init_record(o=None, ag=None, qpos=None, qvel=None):
         if ag is None:
             ag = o
-        return {'o': o.copy(), 'ag': ag.copy(), 'qpos': qpos.copy(), 'qvel': qvel.copy()}
+        return {'o': o, 'ag': ag, 'qpos': qpos, 'qvel': qvel}
 
     def save_model(self, save_path, message=None):
         if not os.path.exists(save_path):
@@ -282,10 +324,19 @@ if __name__ == '__main__':
 
     save_path = 'logs/2020-01-01'
 
-    uniformizer = MetricDiversifier(k=1000, vis=True, load_p=1, vis_coords=[0, 1],
-                                    prop_adjust_interval=1000,
-                                    save_path=save_path
-                                    )
+    def goal_distance(goal_a, goal_b):
+        assert goal_a.shape == goal_b.shape
+        return np.linalg.norm(goal_a - goal_b, axis=-1)
+
+    def compute_reward(ag_2, g, info={}, distance_threshold=0.05):
+        d = goal_distance(ag_2, g)
+        return (d < distance_threshold).astype(np.float32)
+
+    def quasimetric(o, ag, g, distance_threshold=0.05, horizon=100, **kwargs):
+        dist = np.linalg.norm(ag - g, ord=2, axis=1)
+        nsteps_to_goal = dist // distance_threshold
+        Q = horizon - nsteps_to_goal
+        return [], Q
 
     def gaussian_mixture():
         dists_prior = [0.5, 0.5]
@@ -303,13 +354,19 @@ if __name__ == '__main__':
         x = np.clip(x, 0, 1)
         return x
 
+    uniformizer = MetricDiversifier(k=100, vis=True, load_p=1, vis_coords=[0, 1],
+                                    prop_adjust_interval=1000,
+                                    save_path=save_path,
+                                    reward_func=compute_reward,
+                                    )
     counter = 0
     while True:
         # x = gaussian_mixture()
         x = random_walk(x)
-        pnt = uniformizer.init_record(o=x)
-        uniformizer.load_new_point(pnt)
+        pnt = uniformizer.init_record(o=x.copy())
+        uniformizer.load_new_point(pnt, d_func=quasimetric)
         counter += 1
         if counter % 10000 == 0:
             uniformizer.save(save_path=save_path, message=counter)
             print(f"epoch: {counter}, cover size: {uniformizer.current_size}")
+        uniformizer.age += 1
