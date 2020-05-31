@@ -34,16 +34,17 @@ class VisObserver:
             plt.draw()
             plt.pause(0.0001)
 
-    def save(self, save_path, message):
+    def save(self, save_path, message, verbose=False):
         if not os.path.exists(os.path.join(save_path, "mca_figures")):
             os.makedirs(os.path.join(save_path, "mca_figures"))
         fig_name = os.path.join(save_path, "mca_figures", f"{message}.png")
         plt.savefig(fig_name)
-        print(f"saving figure: {fig_name}")
+        if verbose:
+            print(f"saving figure: {fig_name}")
 
 
 class MetricDiversifier:
-    def __init__(self, k, reward_func, load_p=1, vis=False, vis_coords=None, load_model=None, save_path=None, feature_w=None, **kwargs):
+    def __init__(self, k, reward_func, load_p=1, vis=False, dilute_overlaps=True, vis_coords=None, load_model=None, save_path=None, feature_w=None, random_mode=False, **kwargs):
         self.k = k
         self.k_approx = k  # k // 10
         self.M = -np.inf * np.ones((self.k, self.k))
@@ -53,6 +54,8 @@ class MetricDiversifier:
         self.feature_w = feature_w
         self.reward_func = reward_func
         self.save_path = save_path
+        self.dilute_overlaps = dilute_overlaps
+        self.random_mode = random_mode
         self.load_p = load_p
         self.vis = vis
         self.vis_coords = vis_coords
@@ -168,10 +171,9 @@ class MetricDiversifier:
                 b_idx = j
         ##################################
 
-        # FORCED UPDATE: currently disabled (p=0)
-        if b_idx == -1:
-            if np.random.binomial(n=1, p=0):
-                b_idx = random.choice(self.used_slots())
+        # Random mode
+        if self.random_mode:
+            b_idx = random.choice(self.used_slots())
 
         # Early escape if no update is needed
         if b_idx == -1:
@@ -212,6 +214,8 @@ class MetricDiversifier:
         self.age[idx] = np.inf
 
     def pnt_set_overlap(self, pnt, idxs=None):
+        if not self.dilute_overlaps:
+            return False
         if idxs is None:
             idxs = self.used_slots()
         for refidx in idxs:
@@ -292,9 +296,13 @@ class MetricDiversifier:
     def init_record(o=None, ag=None, qpos=None, qvel=None):
         if ag is None:
             ag = o
+        if qpos is None:
+            qpos = np.empty(1)
+        if qvel is None:
+            qvel = np.empty(1)
         return {'o': o, 'ag': ag, 'qpos': qpos, 'qvel': qvel}
 
-    def save_model(self, save_path, message=None):
+    def save_model(self, save_path, message=None, verbose=False):
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         if message is None:
@@ -303,7 +311,8 @@ class MetricDiversifier:
         with open(f_name, 'w') as outfile:
             json_str = json.dumps(self._buffer_2_dict(), indent=4, sort_keys=True)
             outfile.write(json_str)
-        print(f"saving cover: {f_name}, (size:{self.current_size})")
+        if verbose:
+            print(f"saving cover: {f_name}, (size:{self.current_size})")
 
     @staticmethod
     def load_model(load_path):
@@ -323,8 +332,6 @@ class MetricDiversifier:
 
 
 if __name__ == '__main__':
-
-    save_path = 'logs/2020-01-01'
 
     def goal_distance(goal_a, goal_b):
         assert goal_a.shape == goal_b.shape
@@ -356,9 +363,9 @@ if __name__ == '__main__':
         x = np.clip(x, 0, 1)
         return x
 
-    uniformizer = MetricDiversifier(k=100, vis=True, load_p=1, vis_coords=[0, 1],
+    uniformizer = MetricDiversifier(k=10, vis=True, load_p=1, vis_coords=[0, 1],
                                     prop_adjust_interval=1000,
-                                    save_path=save_path,
+                                    save_path='logs/2020-01-01',
                                     reward_func=compute_reward,
                                     )
     counter = 0
@@ -369,6 +376,6 @@ if __name__ == '__main__':
         uniformizer.load_new_point(pnt, d_func=quasimetric)
         counter += 1
         if counter % 10000 == 0:
-            uniformizer.save(save_path=save_path, message=counter)
-            print(f"epoch: {counter}, cover size: {uniformizer.current_size}")
-        uniformizer.age += 1
+            uniformizer.save(message=counter)
+            print(f"epoch: {counter}, cover size: {uniformizer.current_size}, min dist: {uniformizer.M.min()}")
+        # uniformizer.age += 1
