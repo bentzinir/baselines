@@ -45,12 +45,7 @@ class VisObserver:
 
 class MetricDiversifier:
     def __init__(self, k, reward_func, load_p=1, vis=False, dilute_overlaps=True, vis_coords=None, load_model=None, save_path=None, feature_w=None, random_mode=False, **kwargs):
-        self.k = k
-        self.k_approx = k  # k // 10
-        self.M = -np.inf * np.ones((self.k, self.k))
-        self.age = np.inf * np.ones(self.k)
-        self.buffer = [None for _ in range(self.k)]
-        [self.invalidate_idx(idx) for idx in range(self.k)]
+        self.init_buffers(k)
         self.feature_w = feature_w
         self.reward_func = reward_func
         self.save_path = save_path
@@ -62,9 +57,16 @@ class MetricDiversifier:
         self.counter = 0
         self.observer = None
         if load_model is not None:
-            self.buffer = self.load_model(load_model)
-            print(f"Loaded model: {load_model}")
-            print(f"Model size: {self.current_size}")
+            self.load_model(load_model)
+            print(f"Loaded cover: {load_model}, model size: {self.current_size}")
+
+    def init_buffers(self, k):
+        self.k = k
+        self.k_approx = k  # k // 10
+        self.M = -np.inf * np.ones((self.k, self.k))
+        self.age = np.inf * np.ones(self.k)
+        self.buffer = [None for _ in range(self.k)]
+        [self.invalidate_idx(idx) for idx in range(self.k)]
 
     def _buffer_2_array(self, val, idxs):
         array = np.asarray([self.buffer[idx][val] for idx in idxs])
@@ -314,21 +316,19 @@ class MetricDiversifier:
         if verbose:
             print(f"saving cover: {f_name}, (size:{self.current_size})")
 
-    @staticmethod
-    def load_model(load_path):
+    def load_model(self, load_path):
         if load_path is None:
             return
         if not os.path.exists(load_path):
             return None
         with open(load_path, 'r') as infile:
             json_buffer = json.load(infile)
-        buffer = deque(maxlen=len(json_buffer))
+            k = len(json_buffer)
+            self.init_buffers(k)
         for key, val in json_buffer.items():
-            buffer.append(val)
-        for i in range(len(buffer)):
-            buffer[i]['o'] = np.asarray(buffer[i]['o'])
-            buffer[i]['ag'] = np.asarray(buffer[i]['ag'])
-        return buffer
+            new_pnt = self.init_record(**val)
+            idx = random.choice(self.open_slots())
+            self.occupy_idx(new_pnt, idx, ref_idxs=[], distances_to_newpnt=None, distances_from_newpnt=None)
 
 
 if __name__ == '__main__':

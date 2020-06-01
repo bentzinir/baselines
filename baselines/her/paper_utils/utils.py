@@ -22,7 +22,7 @@ def load_policy(env_id, **kwargs):
 
 def load_model(load_path):
     tf_util.load_variables(load_path)
-    print(f"Loaded model: {load_path}")
+    print(f"Loaded policy: {load_path}")
 
 
 def exp1_to_figure(results, save_directory, alpha, message=""):
@@ -119,6 +119,37 @@ def exp2_to_figure(results, save_directory, message=""):
     plt.xlabel("Epochs", fontsize=20)
     # plt.ylabel(f"%", fontsize=20)
     plt.ylim([0, 1])
+    plt.locator_params(nbins=4)
+    ax.tick_params(axis='both', which='major', labelsize=20)
+    plt.tight_layout()
+    plt.savefig(fig_name)
+
+    print(f"saved figure : {fig_name}")
+
+
+def exp3_to_figure(results, save_directory, message=""):
+    fig, ax = plt.subplots(1, 1)
+
+    def cover_plot(data, name):
+        y = data["mean"]
+        x = data["epochs"]
+        ax.plot(x, y, label=name)
+        if "std" in data:
+            error = data["std"]
+            ax.fill_between(x, y - error, y + error, alpha=0.5)
+
+    for key, val in results.items():
+        cover_plot(data=val, name=results[key]["method_name"])
+    ax.legend(loc=0, prop={'size': 15})
+
+    if not os.path.exists(save_directory):
+        os.makedirs(save_directory)
+
+    fig_name = f"{save_directory}/{message}_success_variance.png"
+    plt.title(f"{message}", fontsize=20)
+    plt.xlabel("Epochs", fontsize=20)
+    # plt.ylabel(f"%", fontsize=20)
+    # plt.ylim([0, 1])
     plt.locator_params(nbins=4)
     ax.tick_params(axis='both', which='major', labelsize=20)
     plt.tight_layout()
