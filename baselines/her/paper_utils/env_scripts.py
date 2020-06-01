@@ -79,9 +79,9 @@ def play_policy(env, env_id, T=20, load_path=None, cover_path=None, semi_metric=
     while True:
         i += 1
         env.render()
-        time.sleep(.1)
+        time.sleep(.01)
         action, _, state, _ = policy.step(obs)
-        if eps_greedy and i % 5 == 0:
+        if eps_greedy and i % 10 == 0:
             action = env.action_space.sample()
         obs, reward, done, info = env.step(action)
         success = info['is_success']
@@ -203,6 +203,7 @@ def exp2_loop(env, policy, models_path, ngoals, max_steps, vis=False, eps_greedy
     recall_at_epoch = []
     epochs = paper_utils.list_epochs(models_path)
     epochs.sort()
+    epochs = [epoch for epoch in epochs if epoch % 25 == 0]
     # epochs = epochs[:2]
     for epoch_idx in epochs:
         reached = np.zeros(len(goals))
@@ -228,7 +229,7 @@ def exp2_loop(env, policy, models_path, ngoals, max_steps, vis=False, eps_greedy
     return epochs, recall_at_epoch
 
 
-def experiment2(env, env_id, T=100, models_path=None, save_path=None, eps_greedy=False, ntrials=5, ngoals=100, random_mode=False, vis=False, **kwargs):
+def experiment2(env, env_id, T=100, models_path=None, save_path=None, eps_greedy=False, ntrials=5, ngoals=100, vis=False, **kwargs):
     policy, reward_fun = paper_utils.load_policy(env_id, **kwargs)
 
     results = dict()
@@ -256,6 +257,74 @@ def experiment2(env, env_id, T=100, models_path=None, save_path=None, eps_greedy
             paper_utils.exp2_to_figure(results, save_directory=save_path, message=env_id)
 
 
+def exp3_loop(env, policy, models_path, covers_path, ngoals, max_steps, vis=False, eps_greedy=False):
+
+    variance_at_epoch = []
+    epochs = paper_utils.list_epochs(covers_path)
+    epochs.sort()
+    epochs = [epoch for epoch in epochs if epoch % 25 == 0]
+    # epochs = epochs[:2]
+    for epoch_idx in epochs:
+        cover_path = f"{covers_path}/epoch_{epoch_idx}.json"
+        model_path = f"{models_path}/epoch_{epoch_idx}.model"
+        scrb = MetricDiversifier(k=100, vis=False, vis_coords=[0, 1], save_path=None, load_model=cover_path, reward_func=None)
+        paper_utils.load_model(load_path=model_path)
+        goals = scrb.draw(ngoals)
+        reached = np.zeros(len(goals))
+        reached_list = []
+        for gidx, goal in enumerate(goals):
+            if reached[gidx]:
+                continue
+            obs = reset_env(env, scrb=scrb, mode='intrinsic')
+            env.env.set_goal(goal=np.asarray(goal['ag']))
+            for t in range(max_steps):
+                if reached[gidx]:
+                    break
+                if vis:
+                    env.render()
+                    time.sleep(.01)
+                action, _, state, _ = policy.step(obs)
+                if eps_greedy and t % 10 == 0:
+                    action = env.action_space.sample()
+                obs, reward, done, info = env.step(action)
+                if info['is_success']:
+                    reached[gidx] = 1
+                    reached_list.append(goal['ag'])
+        if len(reached_list) == 0:
+            variance_at_epoch.append(0)
+        else:
+            variance_at_epoch.append(np.asarray(reached_list).std())
+    return epochs, variance_at_epoch
+
+
+def experiment3(env, env_id, T=100, models_path=None, covers_path=None, save_path=None, eps_greedy=False, ntrials=5, ngoals=100, vis=False, **kwargs):
+    policy, reward_fun = paper_utils.load_policy(env_id, **kwargs)
+
+    results = dict()
+    for scrb in [True, False]:
+        if not scrb:
+            continue
+        if scrb:
+            scrb_str = 'scrb'
+            method_name = r'$\alpha =$' + f"{0.5}"
+        else:
+            scrb_str = 'naive'
+            method_name = r'$\alpha =$' + f"{0.0}"
+        variances = []
+        results[scrb_str] = dict()
+        for trial_idx in range(ntrials):
+            print(f"------------------experiment 3: trial #{trial_idx}-----------------")
+            epochs, variance = exp3_loop(env, policy, models_path, covers_path, ngoals, max_steps=T, vis=vis, eps_greedy=eps_greedy)
+            variances.append(variance)
+
+            results[scrb_str]["mean"] = np.asarray(variances).mean(axis=0)
+            results[scrb_str]["std"] = np.asarray(variances).std(axis=0)
+            results[scrb_str]['method_name'] = method_name
+            results[scrb_str]["epochs"] = epochs
+
+            paper_utils.exp3_to_figure(results, save_directory=save_path, message=env_id)
+
+
 if __name__ == '__main__':
     arg_parser = common_arg_parser()
     args, unknown_args = arg_parser.parse_known_args(sys.argv)
@@ -276,3 +345,8 @@ if __name__ == '__main__':
         assert extra_args['models_path'] is not None, 'models path is none'
         assert args.save_path is not None, 'save path is none'
         experiment2(env=environment, env_id=args.env, save_path=args.save_path, **extra_args)
+    elif extra_args['option'] == 'experiment3':
+        assert extra_args['models_path'] is not None, 'models path is none'
+        assert extra_args['covers_path'] is not None, 'covers path is none'
+        assert args.save_path is not None, 'save path is none'
+        experiment3(env=environment, env_id=args.env, save_path=args.save_path, **extra_args)
