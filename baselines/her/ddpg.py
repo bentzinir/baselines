@@ -65,6 +65,7 @@ class DDPG(object):
         if not self.active:
             return
 
+        self.success_measure = 0
         print("\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\")
         print(f"Batch size: {batch_size}, action l2: {action_l2} learning rate: {Q_lr, pi_lr}, gamma: {gamma}")
         print("\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\")
@@ -247,6 +248,25 @@ class DDPG(object):
         self.buffer.store_episode(episode_batch)
 
         if update_stats:
+            ################################
+            # variance of successful goals
+            success = episode_batch['info_is_success'][:, -1, :]
+            g = episode_batch['g'][:][:, -1, :]
+            # successful_g = (success * g)
+            successful_g = g[np.where(success.squeeze())[0]]
+            success_rate = len(successful_g) / len(success)
+            if len(successful_g) == 0:
+                current_success_measure = 0
+            else:
+                current_success_measure = success_rate * successful_g.std()
+            self.success_measure = 0.99 * self.success_measure + 0.01 * current_success_measure
+            # if len(successful_g) > 0:
+            #     self.successful_goals += successful_g.tolist()
+
+            # self.successful_g_stats.update(successful_g)
+            # self.successful_g_stats.recompute_stats()
+            ################################
+
             # add transitions to normalizer
             episode_batch['o_2'] = episode_batch['o'][:, 1:, :]
             episode_batch['ag_2'] = episode_batch['ag'][:, 1:, :]
@@ -442,6 +462,7 @@ class DDPG(object):
         logs += [('stats_o/std', np.mean(self.sess.run([self.o_stats.std])))]
         logs += [('stats_g/mean', np.mean(self.sess.run([self.g_stats.mean])))]
         logs += [('stats_g/std', np.mean(self.sess.run([self.g_stats.std])))]
+        logs += [('stats_success_measure/std', self.success_measure)]
 
         if prefix != '' and not prefix.endswith('/'):
             return [(prefix + '/' + key, val) for key, val in logs]
