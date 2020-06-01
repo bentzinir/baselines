@@ -12,10 +12,10 @@ import random
 
 
 def set_goal(env, scrb):
-    return env.set_goal(goal=random.choice(scrb)['ag'])
-    # if len(scrb.used_slots()) == 0:
-    #     return env.reset()
-    # return env.set_goal(goal=scrb.draw(1)[0]['ag'])
+    if len(scrb.used_slots()) == 0:
+        return env.reset()
+    return env.set_goal(goal=scrb.draw(1)[0]['ag'])
+    # return env.set_goal(goal=random.choice(scrb)['ag'])
 
 
 def reset_env(env, scrb, mode='intrinsic'):
@@ -23,8 +23,8 @@ def reset_env(env, scrb, mode='intrinsic'):
         return env.reset()
     elif mode == 'extrinsic':
         assert 'cover_path' is not None, 'missing cover path argument'
-        # pnt = scrb.draw(1)[0]
-        pnt = random.choice(scrb)
+        pnt = scrb.draw(1)[0]
+        # pnt = random.choice(scrb)
         if pnt is None:
             return env.reset()
         obs = init_from_point(env, pnt)
@@ -73,27 +73,28 @@ def plain_loop(env, action_repetition=1, clip_range=0.5, **kwargs):
 def play_policy(env, env_id, T=20, load_path=None, cover_path=None, semi_metric=False, eps_greedy=False, **kwargs):
     policy, reward_fun = paper_utils.load_policy(env_id, **kwargs)
     paper_utils.load_model(load_path=load_path)
-    cover = MetricDiversifier.load_model(cover_path)
-    obs = reset_env(env, cover, mode='intrinsic')
+    scrb = MetricDiversifier(k=100, load_model=cover_path, reward_func=None)
+    obs = reset_env(env, scrb, mode='intrinsic')
     i = 0
     while True:
         i += 1
         env.render()
-        time.sleep(.01)
+        time.sleep(.1)
         action, _, state, _ = policy.step(obs)
         if eps_greedy and i % 10 == 0:
             action = env.action_space.sample()
         obs, reward, done, info = env.step(action)
+
         success = info['is_success']
         timeout = i % T == 0
         done = success or timeout
         if done:
             # input(f"success: {success}, invalid: {invalid}, timeout: {timeout}")
-            if cover is None or semi_metric:
-                reset_env(env, cover, mode='intrinsic')
+            if scrb is None or semi_metric:
+                reset_env(env, scrb, mode='intrinsic')
             else:
-                reset_env(env, cover, mode='extrinsic')
-            obs = set_goal(env, cover)
+                reset_env(env, scrb, mode='extrinsic')
+            obs = set_goal(env, scrb)
             i = 0
     env.close()
 
@@ -260,6 +261,7 @@ def experiment2(env, env_id, T=100, models_path=None, save_path=None, eps_greedy
 def exp3_loop(env, policy, models_path, covers_path, ngoals, max_steps, vis=False, eps_greedy=False):
 
     variance_at_epoch = []
+    min_dists = []
     epochs = paper_utils.list_epochs(covers_path)
     epochs.sort()
     epochs = [epoch for epoch in epochs if epoch % 25 == 0]
@@ -268,33 +270,35 @@ def exp3_loop(env, policy, models_path, covers_path, ngoals, max_steps, vis=Fals
         cover_path = f"{covers_path}/epoch_{epoch_idx}.json"
         model_path = f"{models_path}/epoch_{epoch_idx}.model"
         scrb = MetricDiversifier(k=100, vis=False, vis_coords=[0, 1], save_path=None, load_model=cover_path, reward_func=None)
+        min_dist = scrb.M.min()
         paper_utils.load_model(load_path=model_path)
         goals = scrb.draw(ngoals)
         reached = np.zeros(len(goals))
         reached_list = []
-        for gidx, goal in enumerate(goals):
-            if reached[gidx]:
-                continue
-            obs = reset_env(env, scrb=scrb, mode='intrinsic')
-            env.env.set_goal(goal=np.asarray(goal['ag']))
-            for t in range(max_steps):
-                if reached[gidx]:
-                    break
-                if vis:
-                    env.render()
-                    time.sleep(.01)
-                action, _, state, _ = policy.step(obs)
-                if eps_greedy and t % 10 == 0:
-                    action = env.action_space.sample()
-                obs, reward, done, info = env.step(action)
-                if info['is_success']:
-                    reached[gidx] = 1
-                    reached_list.append(goal['ag'])
-        if len(reached_list) == 0:
-            variance_at_epoch.append(0)
-        else:
-            variance_at_epoch.append(np.asarray(reached_list).std())
-    return epochs, variance_at_epoch
+        # for gidx, goal in enumerate(goals):
+        #     if reached[gidx]:
+        #         continue
+        #     obs = reset_env(env, scrb=scrb, mode='intrinsic')
+        #     env.env.set_goal(goal=np.asarray(goal['ag']))
+        #     for t in range(max_steps):
+        #         if reached[gidx]:
+        #             break
+        #         if vis:
+        #             env.render()
+        #             time.sleep(.01)
+        #         action, _, state, _ = policy.step(obs)
+        #         if eps_greedy and t % 10 == 0:
+        #             action = env.action_space.sample()
+        #         obs, reward, done, info = env.step(action)
+        #         if info['is_success']:
+        #             reached[gidx] = 1
+        #             reached_list.append(goal['ag'])
+        # if len(reached_list) == 0:
+        #     variance_at_epoch.append(0)
+        # else:
+        #     variance_at_epoch.append(np.asarray(reached_list).std())
+        min_dists.append(min_dist)
+    return epochs, variance_at_epoch, min_dists
 
 
 def experiment3(env, env_id, T=100, models_path=None, covers_path=None, save_path=None, eps_greedy=False, ntrials=5, ngoals=100, vis=False, **kwargs):
@@ -311,14 +315,18 @@ def experiment3(env, env_id, T=100, models_path=None, covers_path=None, save_pat
             scrb_str = 'naive'
             method_name = r'$\alpha =$' + f"{0.0}"
         variances = []
+        min_dists = []
         results[scrb_str] = dict()
         for trial_idx in range(ntrials):
             print(f"------------------experiment 3: trial #{trial_idx}-----------------")
-            epochs, variance = exp3_loop(env, policy, models_path, covers_path, ngoals, max_steps=T, vis=vis, eps_greedy=eps_greedy)
+            epochs, variance, min_dist = exp3_loop(env, policy, models_path, covers_path, ngoals, max_steps=T, vis=vis, eps_greedy=eps_greedy)
             variances.append(variance)
+            min_dists.append(min_dist)
 
-            results[scrb_str]["mean"] = np.asarray(variances).mean(axis=0)
-            results[scrb_str]["std"] = np.asarray(variances).std(axis=0)
+            # results[scrb_str]["mean"] = np.asarray(variances).mean(axis=0)
+            # results[scrb_str]["std"] = np.asarray(variances).std(axis=0)
+            results[scrb_str]["mean"] = np.asarray(min_dists).mean(axis=0)
+            results[scrb_str]["std"] = np.asarray(min_dists).std(axis=0)
             results[scrb_str]['method_name'] = method_name
             results[scrb_str]["epochs"] = epochs
 
