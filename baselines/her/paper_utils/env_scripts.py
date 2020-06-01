@@ -8,12 +8,14 @@ import numpy as np
 import time
 from baselines.her.paper_utils import utils as paper_utils
 np.set_printoptions(precision=2)
+import random
 
 
 def set_goal(env, scrb):
-    if len(scrb.used_slots()) == 0:
-        return env.reset()
-    return env.set_goal(goal=scrb.draw(1)[0]['ag'])
+    return env.set_goal(goal=random.choice(scrb)['ag'])
+    # if len(scrb.used_slots()) == 0:
+    #     return env.reset()
+    # return env.set_goal(goal=scrb.draw(1)[0]['ag'])
 
 
 def reset_env(env, scrb, mode='intrinsic'):
@@ -21,7 +23,8 @@ def reset_env(env, scrb, mode='intrinsic'):
         return env.reset()
     elif mode == 'extrinsic':
         assert 'cover_path' is not None, 'missing cover path argument'
-        pnt = scrb.draw(1)[0]
+        # pnt = scrb.draw(1)[0]
+        pnt = random.choice(scrb)
         if pnt is None:
             return env.reset()
         obs = init_from_point(env, pnt)
@@ -51,7 +54,7 @@ def scan_cover(env, action_repetition=1, cover_path=None, **kwargs):
 
 
 def plain_loop(env, action_repetition=1, clip_range=0.5, **kwargs):
-    reset_env(env, cover=None, mode='intrinsic')
+    reset_env(env, scrb=None, mode='intrinsic')
     i = 0
     while True:
         i += 1
@@ -61,14 +64,15 @@ def plain_loop(env, action_repetition=1, clip_range=0.5, **kwargs):
             a = np.clip(env.action_space.sample(), -clip_range, clip_range)
         o, r, d, info = env.step(a)
         if i % 1000 == 0:
-            reset_env(env, cover=None, mode='intrinsic')
+            reset_env(env, scrb=None, mode='intrinsic')
             print(f"Reset")
             i = 0
     env.close()
 
 
 def play_policy(env, env_id, T=20, load_path=None, cover_path=None, semi_metric=False, eps_greedy=False, **kwargs):
-    policy, reward_fun = paper_utils.load_policy(env_id, load_path, **kwargs)
+    policy, reward_fun = paper_utils.load_policy(env_id, **kwargs)
+    paper_utils.load_model(load_path=load_path)
     cover = MetricDiversifier.load_model(cover_path)
     obs = reset_env(env, cover, mode='intrinsic')
     i = 0
@@ -90,7 +94,6 @@ def play_policy(env, env_id, T=20, load_path=None, cover_path=None, semi_metric=
             else:
                 reset_env(env, cover, mode='extrinsic')
             obs = set_goal(env, cover)
-
             i = 0
     env.close()
 
@@ -156,7 +159,8 @@ def exp1_loop(env, scrb, policy, eps_greedy, T, semi_metric, nsteps):
 def experiment1(env, env_id, T=100, k=50, load_path=None, save_path=None, semi_metric=False, eps_greedy=False,
                 dilute_overlaps=True, ntrials=5, nsteps=10000, random_mode=False, **kwargs):
 
-    policy, reward_fun = paper_utils.load_policy(env_id, load_path, **kwargs)
+    policy, reward_fun = paper_utils.load_policy(env_id, **kwargs)
+    paper_utils.load_model(load_path=load_path)
     if semi_metric:
         metric_str = "semi_metric"
     else:
@@ -165,10 +169,10 @@ def experiment1(env, env_id, T=100, k=50, load_path=None, save_path=None, semi_m
     for random_mode in [True, False]:
         if random_mode:
             random_str = 'random'
-            alpha=0
+            alpha = 0
         else:
             random_str = 'scrb'
-            alpha=0.5
+            alpha = 0.5
 
         log_path = f"{save_path}/{metric_str}_{random_str}"
 
@@ -188,38 +192,68 @@ def experiment1(env, env_id, T=100, k=50, load_path=None, save_path=None, semi_m
             results[k]["std"] = np.asarray(k_radii).std(axis=0)
             results[k]["time"] = times
 
-            paper_utils.results_to_figure(results, save_directory=log_path, alpha=alpha, message=f"{metric_str}_{random_str}")
+            paper_utils.exp1_to_figure(results, save_directory=log_path, alpha=alpha, message=f"{metric_str}_{random_str}")
 
         exp1_loop(env, scrb, policy, eps_greedy, T, semi_metric, 50)
-        paper_utils.overlayed_figure(env, scrb, save_directory=log_path, message=f"{metric_str}_{random_str}")
+        paper_utils.exp1_overlayed_figure(env, scrb, save_directory=log_path, message=f"{metric_str}_{random_str}")
 
 
-def experiment2(env, env_id, T=100, models_path=None, save_path=None, eps_greedy=False, ntrials=5, ngoals=100, random_mode=False, vis=False, **kwargs):
-
+def exp2_loop(env, policy, models_path, ngoals, max_steps, vis=False, eps_greedy=False):
     goals = [env.env.draw_goal() for _ in range(ngoals)]
-    reached = np.zeros(len(goals))
     recall_at_epoch = []
     epochs = paper_utils.list_epochs(models_path)
+    epochs.sort()
+    # epochs = epochs[:2]
     for epoch_idx in epochs:
-        policy, reward_fun = paper_utils.load_policy(env_id, load_path=f"{models_path}/epoch_{epoch_idx}.model", **kwargs)
+        reached = np.zeros(len(goals))
+        paper_utils.load_model(load_path=f"{models_path}/epoch_{epoch_idx}.model")
         for gidx, goal in enumerate(goals):
             if reached[gidx]:
                 continue
-            reset_env(env, scrb=None, mode='intrinsic')
+            obs = reset_env(env, scrb=None, mode='intrinsic')
             env.env.set_goal(goal=goal)
-            for t in range(T):
+            for t in range(max_steps):
                 if reached[gidx]:
                     break
                 if vis:
                     env.render()
-                time.sleep(.01)
+                    time.sleep(.01)
                 action, _, state, _ = policy.step(obs)
-                if eps_greedy and t % 5 == 0:
+                if eps_greedy and t % 10 == 0:
                     action = env.action_space.sample()
                 obs, reward, done, info = env.step(action)
                 if info['is_success']:
                     reached[gidx] = 1
         recall_at_epoch.append(reached.mean())
+    return epochs, recall_at_epoch
+
+
+def experiment2(env, env_id, T=100, models_path=None, save_path=None, eps_greedy=False, ntrials=5, ngoals=100, random_mode=False, vis=False, **kwargs):
+    policy, reward_fun = paper_utils.load_policy(env_id, **kwargs)
+
+    results = dict()
+    for scrb in [True, False]:
+        if not scrb:
+            continue
+        if scrb:
+            scrb_str = 'scrb'
+            method_name = r'$\alpha =$' + f"{0.5}"
+        else:
+            scrb_str = 'naive'
+            method_name = r'$\alpha =$' + f"{0.0}"
+        recalls = []
+        results[scrb_str] = dict()
+        for trial_idx in range(ntrials):
+            print(f"------------------experiment 2: trial #{trial_idx}-----------------")
+            epochs, recall = exp2_loop(env, policy, models_path, ngoals, max_steps=T, vis=vis, eps_greedy=eps_greedy)
+            recalls.append(recall)
+
+            results[scrb_str]["mean"] = np.asarray(recalls).mean(axis=0)
+            results[scrb_str]["std"] = np.asarray(recalls).std(axis=0)
+            results[scrb_str]['method_name'] = method_name
+            results[scrb_str]["epochs"] = epochs
+
+    paper_utils.exp2_to_figure(results, save_directory=save_path)
 
 
 if __name__ == '__main__':
