@@ -253,7 +253,7 @@ def experiment2(env, env_id, T=100, models_path=None, save_path=None, eps_greedy
             results[scrb_str]['method_name'] = method_name
             results[scrb_str]["epochs"] = epochs
 
-    paper_utils.exp2_to_figure(results, save_directory=save_path)
+    paper_utils.exp2_to_figure(results, save_directory=save_path, message=env_id)
 
 
 if __name__ == '__main__':

@@ -96,7 +96,7 @@ def list_epochs(directory):
     return [int(model_name.split('_')[1].split('.')[0]) for model_name in model_names]
 
 
-def exp2_to_figure(results, save_directory):
+def exp2_to_figure(results, save_directory, message=""):
     fig, ax = plt.subplots(1, 1)
 
     def cover_plot(data, name):
@@ -114,8 +114,8 @@ def exp2_to_figure(results, save_directory):
     if not os.path.exists(save_directory):
         os.makedirs(save_directory)
 
-    fig_name = f"{save_directory}/cover.png"
-    plt.title("Goal Coverage", fontsize=20)
+    fig_name = f"{save_directory}/{message}_cover.png"
+    plt.title(f"{message}", fontsize=20)
     plt.xlabel("Epochs", fontsize=20)
     # plt.ylabel(f"%", fontsize=20)
     plt.ylim([0, 1])
