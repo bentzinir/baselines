@@ -79,7 +79,7 @@ def play_policy(env, env_id, T=20, load_path=None, cover_path=None, semi_metric=
     while True:
         i += 1
         env.render()
-        time.sleep(.01)
+        time.sleep(.1)
         action, _, state, _ = policy.step(obs)
         if eps_greedy and i % 5 == 0:
             action = env.action_space.sample()
@@ -253,7 +253,7 @@ def experiment2(env, env_id, T=100, models_path=None, save_path=None, eps_greedy
             results[scrb_str]['method_name'] = method_name
             results[scrb_str]["epochs"] = epochs
 
-    paper_utils.exp2_to_figure(results, save_directory=save_path, message=env_id)
+            paper_utils.exp2_to_figure(results, save_directory=save_path, message=env_id)
 
 
 if __name__ == '__main__':
