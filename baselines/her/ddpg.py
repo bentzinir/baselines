@@ -247,6 +247,15 @@ class DDPG(object):
         self.buffer.store_episode(episode_batch)
 
         if update_stats:
+            ################################
+            # variance of successful goals
+            success = episode_batch['info_is_success'][:, -1, :]
+            g = episode_batch['g'][:][:, -1, :]
+            successful_g = (success * g)
+            self.successful_g_stats.update(successful_g)
+            self.successful_g_stats.recompute_stats()
+            ################################
+
             # add transitions to normalizer
             episode_batch['o_2'] = episode_batch['o'][:, 1:, :]
             episode_batch['ag_2'] = episode_batch['ag'][:, 1:, :]
@@ -353,6 +362,10 @@ class DDPG(object):
             if reuse:
                 vs.reuse_variables()
             self.g_stats = Normalizer(self.dimg, self.norm_eps, self.norm_clip, sess=self.sess)
+        with tf.variable_scope('successful_g_stats') as vs:
+            if reuse:
+                vs.reuse_variables()
+            self.successful_g_stats = Normalizer(self.dimg, self.norm_eps, self.norm_clip, sess=self.sess)
 
         # mini-batch sampling.
         batch = self.staging_tf.get()
@@ -442,6 +455,7 @@ class DDPG(object):
         logs += [('stats_o/std', np.mean(self.sess.run([self.o_stats.std])))]
         logs += [('stats_g/mean', np.mean(self.sess.run([self.g_stats.mean])))]
         logs += [('stats_g/std', np.mean(self.sess.run([self.g_stats.std])))]
+        logs += [('stats_suc_g/std', np.mean(self.sess.run([self.successful_g_stats.std])))]
 
         if prefix != '' and not prefix.endswith('/'):
             return [(prefix + '/' + key, val) for key, val in logs]
