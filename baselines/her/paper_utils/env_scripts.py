@@ -3,7 +3,8 @@ from baselines.common.cmd_util import common_arg_parser
 from baselines.run import parse_cmdline_kwargs
 from baselines.her.metric_diversification import MetricDiversifier
 from baselines.her.cover_measure import init_from_point
-import gym, gym_maze
+import gym
+#import gym_maze
 import numpy as np
 import time
 from baselines.her.paper_utils import utils as paper_utils
