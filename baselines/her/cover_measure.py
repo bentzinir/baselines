@@ -173,16 +173,16 @@ def parse_horizon(logfile):
     return float(t_lines[0].split(' ')[-1])
 
 
-def parse_log(logfile, field_name, normalize=False, scale=1):
+def parse_log(logfile, field_name, normalize=False, dilute_fact=5):
     with open(logfile, "r") as fid:
         lines = fid.read().splitlines()
         values = np.asarray([float(line.split('|')[-2]) for line in lines if field_name in line])
         if normalize:
             values = (values - values.min())
             values = values / values.max()
-        if scale:
-            values *= scale
-    return values
+        # if scale:
+        #     values *= scale
+    return values[::dilute_fact]
 
 
 def main(args):
@@ -196,24 +196,25 @@ def main(args):
 
     save_dir = set_default_value(extra_args, 'save_dir', "/")
 
+    d = 7
     if "scrb" in extra_args:
         fname = "scrb"
-        mean = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_mean", normalize=False, scale=1)
-        std = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_std", normalize=False, scale=1)
+        mean = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_mean", normalize=False, dilute_fact=d)
+        std = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_std", normalize=False, dilute_fact=d)
         results[fname] = dict()
         results[fname]["mean"] = mean
         results[fname]["std"] = std
-        results[fname]["xscale"] = 1
+        results[fname]["xscale"] = d
         results[fname]["name"] = r'$\alpha =$' + f"{0.5}"
 
     if "plain" in extra_args:
         fname = "plain"
-        mean = parse_log(f"{plain_log_dir}/log.txt", field_name="test/hit_time_mean", normalize=False, scale=1)
-        std = parse_log(f"{plain_log_dir}/log.txt", field_name="test/hit_time_std", normalize=False, scale=1)
+        mean = parse_log(f"{plain_log_dir}/log.txt", field_name="test/hit_time_mean", normalize=False, dilute_fact=d)
+        std = parse_log(f"{plain_log_dir}/log.txt", field_name="test/hit_time_std", normalize=False, dilute_fact=d)
         results[fname] = dict()
         results[fname]["mean"] = mean
         results[fname]["std"] = std
-        results[fname]["xscale"] = 1
+        results[fname]["xscale"] = d
         results[fname]["name"] = r'$\alpha =$' + f"{0}"
 
     # results["test success"] = dict()
