@@ -28,11 +28,13 @@ def plot(results, save_dir):
 
     for key, val in results.items():
         cover_plot(data=val, name=val["name"])
-    ax.legend()
+    ax.legend(fontsize=20)
+    ax.set_facecolor('#ECE6E5')
     plt.title(f"Mean Hit Time", fontsize=20)
     plt.xlabel("Epochs", fontsize=20)
     plt.locator_params(nbins=4)
     ax.tick_params(axis='both', which='major', labelsize=20)
+    plt.grid(color='w', linestyle='--', linewidth=1)
     plt.tight_layout()
     plt.savefig(f"{save_dir}/hit_time.png")
     plt.show()
