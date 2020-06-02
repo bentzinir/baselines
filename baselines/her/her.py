@@ -58,7 +58,7 @@ def mpi_average(value):
 
 
 def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
-          save_path, demo_file, mca, random_cover=False, trainable=True, invalidate_episodes=False, alpha=0.5, **kwargs):
+          save_path, demo_file, mca, random_cover=False, trainable=True, invalidate_episodes=False, alpha=0.5, nscrb_updates=1000, **kwargs):
     rank = MPI.COMM_WORLD.Get_rank()
 
     logger.info("Training...")
@@ -79,7 +79,8 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             # random = False
             episode = rollout_worker.generate_rollouts()
             inits = mca.draw_init(n_mca_envs, alpha=alpha)
-            mca_episode = mca.rollout_worker.generate_rollouts(ex_init=inits, random=random_cover or random or not trainable)
+            mca_episode = mca.rollout_worker.generate_rollouts(ex_init=inits, random=random_cover or random or not trainable,
+                                                               log_hit_time=mca.log_hit_time)
 
             ##################
             # exclude invalid episodes
@@ -111,8 +112,9 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             mca.update_age()
 
         print(f"Percentage of invalidations: {np.asarray(invalids).mean()}, average ep length: {np.asarray(lengths).mean()}")
-        mca.refresh_cells(n=500)
-        mca.update_metric_model(n=10e3)
+        if alpha > 0:
+            mca.refresh_cells(n=500)
+            mca.update_metric_model(n=nscrb_updates)
 
         # test
         evaluator.clear_history()
@@ -120,9 +122,11 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
         for n3 in range(n_test_rollouts):
             record = n3 == 0 and epoch % policy_save_interval == 0
             evaluator.generate_rollouts(record=record)
-            mca.evaluator.generate_rollouts(ex_init=mca.draw_init(n_mca_envs),
+            test_inits = mca.draw_init(n_mca_envs, alpha=alpha)
+            mca.evaluator.generate_rollouts(ex_init=test_inits,
                                             record=record,
-                                            random=random_cover)
+                                            random=random_cover,
+                                            log_hit_time=mca.log_hit_time)
 
         if epoch % policy_save_interval == 0:
             [state_model.save(message=f"epoch_{epoch}") for state_model in mca.state_model]
@@ -269,6 +273,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     feature_w = set_default_value(params, 'feature_w', None)
     invalidate_episodes = set_default_value(kwargs, 'invalidate_episodes', False)
     alpha = set_default_value(kwargs, 'alpha', 0.5)
+    nscrb_updates = set_default_value(kwargs, 'nscrb_updates', 1000)
 
     mca_policy, mca_rw, mca_evaluator, mca_params, coord_dict, reward_fun = prepare_agent(mca_env, eval_env,
                                                                                           active=mca_active,
@@ -327,6 +332,7 @@ def learn(*, network, env, mca_env, total_timesteps,
                  cover_measure_env=kwargs['cover_measure_env'],
                  invalidate_episodes=invalidate_episodes,
                  alpha=alpha,
+                 nscrb_updates=nscrb_updates
                  )
 
 

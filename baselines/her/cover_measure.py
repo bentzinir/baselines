@@ -29,6 +29,11 @@ def plot(results, save_dir):
     for key, val in results.items():
         cover_plot(data=val, name=val["name"])
     ax.legend()
+    plt.title(f"Mean Hit Time", fontsize=20)
+    plt.xlabel("Epochs", fontsize=20)
+    plt.locator_params(nbins=4)
+    ax.tick_params(axis='both', which='major', labelsize=20)
+    plt.tight_layout()
     plt.savefig(f"{save_dir}/hit_time.png")
     plt.show()
 
@@ -191,20 +196,20 @@ def main(args):
 
     if "scrb" in extra_args:
         fname = "scrb"
-        values = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_rate", normalize=False, scale=1)
-        std = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_rate_std", normalize=False, scale=1)
+        mean = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_mean", normalize=False, scale=1)
+        std = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_std", normalize=False, scale=1)
         results[fname] = dict()
-        results[fname]["mean"] = values
+        results[fname]["mean"] = mean
         results[fname]["std"] = std
         results[fname]["xscale"] = 1
         results[fname]["name"] = r'$\alpha =$' + f"{0.5}"
 
     if "plain" in extra_args:
         fname = "plain"
-        values = parse_log(f"{plain_log_dir}/log.txt", field_name="test/hit_time_rate", normalize=False, scale=1)
-        std = parse_log(f"{plain_log_dir}/log.txt", field_name="test/hit_time_rate_std", normalize=False, scale=1)
+        mean = parse_log(f"{plain_log_dir}/log.txt", field_name="test/hit_time_mean", normalize=False, scale=1)
+        std = parse_log(f"{plain_log_dir}/log.txt", field_name="test/hit_time_std", normalize=False, scale=1)
         results[fname] = dict()
-        results[fname]["mean"] = values
+        results[fname]["mean"] = mean
         results[fname]["std"] = std
         results[fname]["xscale"] = 1
         results[fname]["name"] = r'$\alpha =$' + f"{0}"

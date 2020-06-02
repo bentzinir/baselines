@@ -14,7 +14,7 @@ class MCA:
         self.ss = ss
         self.ex_experience = None
         self.coord_dict = coord_dict
-        # self.tmp_point = state_model.init_record()
+        self.log_hit_time = True
 
     @staticmethod
     def sample_2_dict(x):
@@ -53,12 +53,14 @@ class MCA:
     def draw_init(self, n, alpha=0.5):
         # with probability alpha sample from the state model. Otherwise, sample from the replay buffer
         if np.random.binomial(n=1, p=alpha):
+            self.log_hit_time = True
             valid_cells = [midx for midx, m in enumerate(self.state_model) if m.current_size > 0]
             if len(valid_cells) == 0:
                 return
             inits = self.state_model[random.choice(valid_cells)].draw(n)
             ginits = self.state_model[random.choice(valid_cells)].draw(n)
         else:
+            self.log_hit_time = (alpha == 0)
             inits = self.init_from_buffer(n)
             ginits = self.init_from_buffer(n)
         if inits is None or ginits is None:
