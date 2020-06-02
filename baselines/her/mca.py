@@ -51,8 +51,7 @@ class MCA:
         return inits
 
     def draw_init(self, n, alpha=0.5):
-        # with probability alpha sample from the large replay buffer. Otherwise, sample from the diverse state model
-        # goals and inits are sampled from different states
+        # with probability alpha sample from the state model. Otherwise, sample from the replay buffer
         if np.random.binomial(n=1, p=alpha):
             valid_cells = [midx for midx, m in enumerate(self.state_model) if m.current_size > 0]
             if len(valid_cells) == 0:

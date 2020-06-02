@@ -58,7 +58,7 @@ def mpi_average(value):
 
 
 def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles, n_batches, policy_save_interval,
-          save_path, demo_file, mca, random_cover=False, trainable=True, invalidate_episodes=False, **kwargs):
+          save_path, demo_file, mca, random_cover=False, trainable=True, invalidate_episodes=False, alpha=0.5, **kwargs):
     rank = MPI.COMM_WORLD.Get_rank()
 
     logger.info("Training...")
@@ -78,7 +78,7 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             random = n1 % 10 == 0
             # random = False
             episode = rollout_worker.generate_rollouts()
-            inits = mca.draw_init(n_mca_envs)
+            inits = mca.draw_init(n_mca_envs, alpha=alpha)
             mca_episode = mca.rollout_worker.generate_rollouts(ex_init=inits, random=random_cover or random or not trainable)
 
             ##################
@@ -268,6 +268,7 @@ def learn(*, network, env, mca_env, total_timesteps,
     k = set_default_value(kwargs, 'k', 1000)
     feature_w = set_default_value(params, 'feature_w', None)
     invalidate_episodes = set_default_value(kwargs, 'invalidate_episodes', False)
+    alpha = set_default_value(kwargs, 'alpha', 0.5)
 
     mca_policy, mca_rw, mca_evaluator, mca_params, coord_dict, reward_fun = prepare_agent(mca_env, eval_env,
                                                                                           active=mca_active,
@@ -324,7 +325,8 @@ def learn(*, network, env, mca_env, total_timesteps,
                  random_cover=random_cover,
                  trainable=trainable,
                  cover_measure_env=kwargs['cover_measure_env'],
-                 invalidate_episodes=invalidate_episodes
+                 invalidate_episodes=invalidate_episodes,
+                 alpha=alpha,
                  )
 
 
