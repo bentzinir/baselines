@@ -127,6 +127,23 @@ class MetricDiversifier:
             set_ag_mat = np.empty_like(pnt_ag_mat)
         return set_o_mat, set_ag_mat, pnt_o_mat, pnt_ag_mat
 
+    def refresh_entry(self, idx, d_func):
+        rpnt = self.buffer[idx]
+        set_o_mat, set_ag_mat, pnt_o_mat, pnt_ag_mat = self.prepare_dfunc_inputs(rpnt)
+
+        # update "from" distances pnt -> set
+        self.M[idx] = self.quasimetric(x1_o=pnt_o_mat, x1_ag=pnt_ag_mat, x2_o=set_o_mat, x2_ag=set_ag_mat,
+                                       d_func=d_func)
+
+        # update "to" distances set -> pnt
+        self.M[:, idx] = self.quasimetric(x1_o=set_o_mat, x1_ag=set_ag_mat, x2_o=pnt_o_mat, x2_ag=pnt_ag_mat,
+                                          d_func=d_func)
+
+        # update self distance to +inf to exclude from downstream calculation
+        self.M[idx, idx] = np.inf
+
+        self.age[idx] = 0
+
     def adjust_set(self, new_pnt, d_func):
 
         for idx in self.used_slots():
@@ -141,19 +158,7 @@ class MetricDiversifier:
         # refresh outdated matrix entries
         for idx in ref_idx_set:
             if self.age[idx] > 10:
-                rpnt = self.buffer[idx]
-                set_o_mat, set_ag_mat, pnt_o_mat, pnt_ag_mat = self.prepare_dfunc_inputs(rpnt)
-
-                # update "from" distances pnt -> set
-                self.M[idx] = self.quasimetric(x1_o=pnt_o_mat, x1_ag=pnt_ag_mat, x2_o=set_o_mat, x2_ag=set_ag_mat, d_func=d_func)
-
-                # update "to" distances set -> pnt
-                self.M[:, idx] = self.quasimetric(x1_o=set_o_mat, x1_ag=set_ag_mat, x2_o=pnt_o_mat, x2_ag=pnt_ag_mat, d_func=d_func)
-
-                # update self distance to +inf to exclude from downstream calculation
-                self.M[idx, idx] = np.inf
-
-                self.age[idx] = 0
+                self.refresh_entry(idx, d_func)
 
         set_o_mat, set_ag_mat, newpnt_o_mat, newpnt_ag_mat = self.prepare_dfunc_inputs(new_pnt)
 
@@ -302,7 +307,7 @@ class MetricDiversifier:
             qpos = np.empty(1)
         if qvel is None:
             qvel = np.empty(1)
-        return {'o': o, 'ag': ag, 'qpos': qpos, 'qvel': qvel}
+        return {'o': np.asarray(o), 'ag': np.asarray(ag), 'qpos': qpos, 'qvel': qvel}
 
     def save_model(self, save_path, message=None, verbose=False):
         if not os.path.exists(save_path):
@@ -316,7 +321,7 @@ class MetricDiversifier:
         if verbose:
             print(f"saving cover: {f_name}, (size:{self.current_size})")
 
-    def load_model(self, load_path):
+    def load_model(self, load_path, d_func=None):
         if load_path is None:
             return
         if not os.path.exists(load_path):
@@ -329,6 +334,8 @@ class MetricDiversifier:
             new_pnt = self.init_record(**val)
             idx = random.choice(self.open_slots())
             self.occupy_idx(new_pnt, idx, ref_idxs=[], distances_to_newpnt=None, distances_from_newpnt=None)
+        for idx in self.used_slots():
+            self.refresh_entry(idx, d_func)
 
 
 if __name__ == '__main__':
@@ -378,4 +385,4 @@ if __name__ == '__main__':
         if counter % 10000 == 0:
             uniformizer.save(message=counter)
             print(f"epoch: {counter}, cover size: {uniformizer.current_size}, min dist: {uniformizer.M.min()}")
-        # uniformizer.age += 1
+        uniformizer.age += 1

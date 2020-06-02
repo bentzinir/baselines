@@ -145,7 +145,7 @@ def exp3_to_figure(results, save_directory, message=""):
     if not os.path.exists(save_directory):
         os.makedirs(save_directory)
 
-    fig_name = f"{save_directory}/{message}_success_variance.png"
+    fig_name = f"{save_directory}/{message}.png"
     plt.title(f"{message}", fontsize=20)
     plt.xlabel("Epochs", fontsize=20)
     # plt.ylabel(f"%", fontsize=20)

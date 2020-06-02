@@ -13,10 +13,10 @@ import random
 
 
 def set_goal(env, scrb):
-    return env.set_goal(goal=random.choice(scrb)['ag'])
-    # if len(scrb.used_slots()) == 0:
-    #     return env.reset()
-    # return env.set_goal(goal=scrb.draw(1)[0]['ag'])
+    if len(scrb.used_slots()) == 0:
+        return env.reset()
+    return env.set_goal(goal=scrb.draw(1)[0]['ag'])
+    # return env.set_goal(goal=random.choice(scrb)['ag'])
 
 
 def reset_env(env, scrb, mode='intrinsic'):
@@ -24,8 +24,8 @@ def reset_env(env, scrb, mode='intrinsic'):
         return env.reset()
     elif mode == 'extrinsic':
         assert 'cover_path' is not None, 'missing cover path argument'
-        # pnt = scrb.draw(1)[0]
-        pnt = random.choice(scrb)
+        pnt = scrb.draw(1)[0]
+        # pnt = random.choice(scrb)
         if pnt is None:
             return env.reset()
         obs = init_from_point(env, pnt)
@@ -39,8 +39,8 @@ def reset_env(env, scrb, mode='intrinsic'):
 
 
 def scan_cover(env, action_repetition=1, cover_path=None, **kwargs):
-    cover = MetricDiversifier.load_model(cover_path)
-    obs = reset_env(env, cover, mode='intrinsic')
+    scrb = MetricDiversifier(k=100, load_model=cover_path, reward_func=None)
+    obs = reset_env(env, scrb, mode='intrinsic')
     for i in range(100000):
         env.render()
         time.sleep(.1)
@@ -48,7 +48,7 @@ def scan_cover(env, action_repetition=1, cover_path=None, **kwargs):
             a = env.action_space.sample()
         obs, reward, done, info = env.step(a)
         if i % 1 == 0:
-            ob = reset_env(env, cover, mode='extrinsic')
+            ob = reset_env(env, scrb, mode='extrinsic')
             # print(np.linalg.norm(ob["qvel"]))
             time.sleep(.5)
     env.close()
@@ -74,8 +74,8 @@ def plain_loop(env, action_repetition=1, clip_range=0.5, **kwargs):
 def play_policy(env, env_id, T=20, load_path=None, cover_path=None, semi_metric=False, eps_greedy=False, **kwargs):
     policy, reward_fun = paper_utils.load_policy(env_id, **kwargs)
     paper_utils.load_model(load_path=load_path)
-    cover = MetricDiversifier.load_model(cover_path)
-    obs = reset_env(env, cover, mode='intrinsic')
+    scrb = MetricDiversifier(k=100, load_model=cover_path, reward_func=None)
+    obs = reset_env(env, scrb, mode='intrinsic')
     i = 0
     while True:
         i += 1
@@ -85,16 +85,17 @@ def play_policy(env, env_id, T=20, load_path=None, cover_path=None, semi_metric=
         if eps_greedy and i % 10 == 0:
             action = env.action_space.sample()
         obs, reward, done, info = env.step(action)
+
         success = info['is_success']
         timeout = i % T == 0
         done = success or timeout
         if done:
             # input(f"success: {success}, invalid: {invalid}, timeout: {timeout}")
-            if cover is None or semi_metric:
-                reset_env(env, cover, mode='intrinsic')
+            if scrb is None or semi_metric:
+                reset_env(env, scrb, mode='intrinsic')
             else:
-                reset_env(env, cover, mode='extrinsic')
-            obs = set_goal(env, cover)
+                reset_env(env, scrb, mode='extrinsic')
+            obs = set_goal(env, scrb)
             i = 0
     env.close()
 
@@ -258,28 +259,43 @@ def experiment2(env, env_id, T=100, models_path=None, save_path=None, eps_greedy
             paper_utils.exp2_to_figure(results, save_directory=save_path, message=env_id)
 
 
-def exp3_loop(env, policy, models_path, covers_path, ngoals, max_steps, vis=False, eps_greedy=False):
+def exp3_loop(env, policy, models_path, covers_path, ngoals, max_steps, semi_metric, vis=False, eps_greedy=False):
 
     variance_at_epoch = []
+    min_dists = []
+    hit_times = []
     epochs = paper_utils.list_epochs(covers_path)
     epochs.sort()
     epochs = [epoch for epoch in epochs if epoch % 25 == 0]
+
+    # TODO: we take the last model as the reference policy
+    model_path = f"{models_path}/epoch_{epochs[-1]}.model"
+    paper_utils.load_model(load_path=model_path)
+
     # epochs = epochs[:2]
-    for epoch_idx in epochs:
+    for epoch_idx in epochs[:-1]:
         cover_path = f"{covers_path}/epoch_{epoch_idx}.json"
-        model_path = f"{models_path}/epoch_{epoch_idx}.model"
         scrb = MetricDiversifier(k=100, vis=False, vis_coords=[0, 1], save_path=None, load_model=cover_path, reward_func=None)
-        paper_utils.load_model(load_path=model_path)
-        goals = scrb.draw(ngoals)
-        reached = np.zeros(len(goals))
+        min_dist = scrb.M.min()
+        pnts = scrb.draw(ngoals, replace=False)
+        reached = np.zeros(len(pnts))
+        hit_time = [max_steps for _ in range(ngoals)]
         reached_list = []
-        for gidx, goal in enumerate(goals):
-            if reached[gidx]:
+        for pidx, pnt in enumerate(pnts):
+            goal = pnt['ag']
+            if reached[pidx]:
                 continue
-            obs = reset_env(env, scrb=scrb, mode='intrinsic')
-            env.env.set_goal(goal=np.asarray(goal['ag']))
+            if semi_metric:
+                obs = reset_env(env, scrb=scrb, mode='intrinsic')
+            else:
+                refidx=pidx
+                while refidx == pidx:
+                    refidx = random.choice([i for i in range(len(pnts))])
+                refpnt = pnts[refidx]
+                obs = init_from_point(env, refpnt)
+            env.env.set_goal(goal=np.asarray(goal))
             for t in range(max_steps):
-                if reached[gidx]:
+                if reached[pidx]:
                     break
                 if vis:
                     env.render()
@@ -289,18 +305,22 @@ def exp3_loop(env, policy, models_path, covers_path, ngoals, max_steps, vis=Fals
                     action = env.action_space.sample()
                 obs, reward, done, info = env.step(action)
                 if info['is_success']:
-                    reached[gidx] = 1
-                    reached_list.append(goal['ag'])
+                    reached[pidx] = 1
+                    reached_list.append(goal)
+                    hit_time[pidx] = t
         if len(reached_list) == 0:
             variance_at_epoch.append(0)
         else:
             variance_at_epoch.append(np.asarray(reached_list).std())
-    return epochs, variance_at_epoch
+        min_dists.append(min_dist)
+        hit_times.append(np.mean(hit_time))
+    return epochs, variance_at_epoch, min_dists, hit_times
 
 
-def experiment3(env, env_id, T=100, models_path=None, covers_path=None, save_path=None, eps_greedy=False, ntrials=5, ngoals=100, vis=False, **kwargs):
+def experiment3(env, env_id, T=100, models_path=None, covers_path=None, save_path=None, eps_greedy=False, semi_metric=False, ntrials=5, ngoals=100, vis=False, **kwargs):
     policy, reward_fun = paper_utils.load_policy(env_id, **kwargs)
 
+    metric = 'mean_hit_time'
     results = dict()
     for scrb in [True, False]:
         if not scrb:
@@ -312,18 +332,28 @@ def experiment3(env, env_id, T=100, models_path=None, covers_path=None, save_pat
             scrb_str = 'naive'
             method_name = r'$\alpha =$' + f"{0.0}"
         variances = []
+        min_dists = []
+        mean_hit_times = []
         results[scrb_str] = dict()
         for trial_idx in range(ntrials):
             print(f"------------------experiment 3: trial #{trial_idx}-----------------")
-            epochs, variance = exp3_loop(env, policy, models_path, covers_path, ngoals, max_steps=T, vis=vis, eps_greedy=eps_greedy)
+            epochs, variance, min_dist, mean_hit_time = exp3_loop(env, policy, models_path, covers_path, ngoals, semi_metric=semi_metric, max_steps=T, vis=vis, eps_greedy=eps_greedy)
             variances.append(variance)
-
-            results[scrb_str]["mean"] = np.asarray(variances).mean(axis=0)
-            results[scrb_str]["std"] = np.asarray(variances).std(axis=0)
+            min_dists.append(min_dist)
+            mean_hit_times.append(mean_hit_time)
+            if metric == 'variance':
+                results[scrb_str]["mean"] = np.asarray(variances).mean(axis=0)
+                results[scrb_str]["std"] = np.asarray(variances).std(axis=0)
+            elif metric == 'min_dists':
+                results[scrb_str]["mean"] = np.asarray(min_dists).mean(axis=0)
+                results[scrb_str]["std"] = np.asarray(min_dists).std(axis=0)
+            elif metric == 'mean_hit_time':
+                results[scrb_str]["mean"] = np.asarray(mean_hit_times).mean(axis=0)
+                results[scrb_str]["std"] = np.asarray(mean_hit_times).std(axis=0)
             results[scrb_str]['method_name'] = method_name
             results[scrb_str]["epochs"] = epochs
 
-            paper_utils.exp3_to_figure(results, save_directory=save_path, message=env_id)
+            paper_utils.exp3_to_figure(results, save_directory=save_path, message=f"{env_id}_{metric}")
 
 
 if __name__ == '__main__':
