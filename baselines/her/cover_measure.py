@@ -3,6 +3,7 @@ from baselines.run import parse_cmdline_kwargs
 import sys
 import numpy as np
 from matplotlib import pyplot as plt
+from baselines.common.misc_util import set_default_value
 
 
 def reward_fun(env, ag_2, g, info):  # vectorized
@@ -13,7 +14,7 @@ def none_init():
     return {'x': None, 'info': None, 'g': None}
 
 
-def plot(results, log_directory):
+def plot(results, save_dir):
 
     fig, ax = plt.subplots(1, 1)
 
@@ -26,9 +27,10 @@ def plot(results, log_directory):
             ax.fill_between(x, y - error, y + error, alpha=0.5)
 
     for key, val in results.items():
-        cover_plot(data=val, name=key)
+        cover_plot(data=val, name=val["name"])
     ax.legend()
-    plt.savefig(f"{log_directory}/lift.png")
+    plt.savefig(f"{save_dir}/hit_time.png")
+    plt.show()
 
 
 def init_from_point(env, pnt):
@@ -180,33 +182,53 @@ def main(args):
     arg_parser = common_arg_parser()
     args, unknown_args = arg_parser.parse_known_args(args)
     extra_args = parse_cmdline_kwargs(unknown_args)
-    log_directory = extra_args["load"]
+    scrb_log_dir = extra_args["scrb"]
+    plain_log_dir = extra_args["plain"]
 
     results = dict()
 
-    results["test success"] = dict()
-    results["test success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/success_rate", normalize=False, scale=100)
-    results["test success"]["xscale"] = 1
+    save_dir = set_default_value(extra_args, 'save_dir', "/")
 
-    results["train success"] = dict()
-    results["train success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="train/success_rate", normalize=False, scale=100)
-    results["train success"]["xscale"] = 1
+    if "scrb" in extra_args:
+        fname = "scrb"
+        values = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_rate", normalize=False, scale=1)
+        std = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_rate_std", normalize=False, scale=1)
+        results[fname] = dict()
+        results[fname]["mean"] = values
+        results[fname]["std"] = std
+        results[fname]["xscale"] = 1
+        results[fname]["name"] = r'$\alpha =$' + f"{0.5}"
 
-    results["hit time rate"] = dict()
-    results["hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/hit_time_rate", normalize=True, scale=50)
-    results["hit time rate"]["xscale"] = 1
+    if "plain" in extra_args:
+        fname = "plain"
+        values = parse_log(f"{plain_log_dir}/log.txt", field_name="test/hit_time_rate", normalize=False, scale=1)
+        std = parse_log(f"{plain_log_dir}/log.txt", field_name="test/hit_time_rate_std", normalize=False, scale=1)
+        results[fname] = dict()
+        results[fname]["mean"] = values
+        results[fname]["std"] = std
+        results[fname]["xscale"] = 1
+        results[fname]["name"] = r'$\alpha =$' + f"{0}"
 
-    results["train hit time rate"] = dict()
-    results["train hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="train/hit_time_rate", normalize=True, scale=50)
-    results["train hit time rate"]["xscale"] = 1
+    # results["test success"] = dict()
+    # results["test success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/success_rate", normalize=False, scale=100)
+    # results["test success"]["xscale"] = 1
+    #
+    # results["train success"] = dict()
+    # results["train success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="train/success_rate", normalize=False, scale=100)
+    # results["train success"]["xscale"] = 1
 
-    results["Q"] = dict()
-    results["Q"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/mean_Q", normalize=False, scale=1)
-    results["Q"]["xscale"] = 1
+    # results["train hit time rate"] = dict()
+    # results["train hit time rate"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="train/hit_time_rate", normalize=True, scale=1)
+    # results["train hit time rate"]["xscale"] = 1
 
-    results["goal std"] = dict()
-    results["goal std"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="stats_g/std", normalize=True, scale=100)
-    results["goal std"]["xscale"] = 1
+    # results["Q"] = dict()
+    # results["Q"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/mean_Q", normalize=False, scale=1)
+    # results["Q"]["xscale"] = 1
+
+    # results["goal std"] = dict()
+    # results["goal std"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="stats_g/std", normalize=False, scale=1)
+    # results["goal std"]["xscale"] = 1
+
 
     # v = results["Q"]["mean"] + results["hit time rate"]["mean"]
 
@@ -227,7 +249,7 @@ def main(args):
     #     results[f"{k}"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name=fmean, normalize=False)
     #     results[f"{k}"]["std"] = parse_log(f"{log_directory}/log.txt", field_name=fstd, normalize=False)
     #     results[f"{k}"]["xscale"] = 50
-    plot(results, log_directory)
+    plot(results, save_dir)
 
 
 if __name__ == '__main__':

@@ -385,4 +385,4 @@ if __name__ == '__main__':
         if counter % 10000 == 0:
             uniformizer.save(message=counter)
             print(f"epoch: {counter}, cover size: {uniformizer.current_size}, min dist: {uniformizer.M.min()}")
-        # uniformizer.age += 1
+        uniformizer.age += 1
