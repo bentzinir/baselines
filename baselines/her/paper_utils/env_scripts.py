@@ -356,10 +356,15 @@ def experiment3(env, env_id, T=100, models_path=None, covers_path=None, save_pat
 
 def exp4_loop(env, policy, models_path, covers_path, ngoals, max_steps, semi_metric, vis=False, eps_greedy=False):
     recall_at_epoch = []
-    epochs = paper_utils.list_epochs(models_path)
-    epochs.sort()
-    epochs = [epoch for epoch in epochs if epoch % 25 == 0]
-    epochs = epochs[:4]
+    hit_time_at_epoch = []
+    model_epochs = paper_utils.list_epochs(models_path)
+    cover_epochs = paper_utils.list_epochs(covers_path)
+
+    model_epochs = [epoch for epoch in model_epochs if epoch % 25 == 0]
+    cover_epochs = [epoch for epoch in cover_epochs if epoch % 25 == 0]
+    n_epochs = np.minimum(len(model_epochs), len(cover_epochs))
+
+    epochs = model_epochs[:n_epochs]
     for epoch_idx in epochs:
 
         cover_path = f"{covers_path}/epoch_{epoch_idx}.json"
@@ -368,6 +373,7 @@ def exp4_loop(env, policy, models_path, covers_path, ngoals, max_steps, semi_met
         paper_utils.load_model(load_path=f"{models_path}/epoch_{epoch_idx}.model")
         pnts = scrb.draw(ngoals, replace=False)
         reached = np.zeros(len(pnts))
+        hit_time = [max_steps for _ in range(len(pnts))]
         for pidx, pnt in enumerate(pnts):
             goal = pnt['ag']
             if reached[pidx]:
@@ -393,8 +399,10 @@ def exp4_loop(env, policy, models_path, covers_path, ngoals, max_steps, semi_met
                 obs, reward, done, info = env.step(action)
                 if info['is_success']:
                     reached[pidx] = 1
+                    hit_time[pidx] = t
         recall_at_epoch.append(reached.mean())
-    return epochs, recall_at_epoch
+        hit_time_at_epoch.append(np.mean(hit_time))
+    return epochs, recall_at_epoch, hit_time_at_epoch
 
 
 def experiment4(env, env_id, T=100, models_path_a=None, models_path_b=None, covers_path_a=None, covers_path_b=None,
@@ -405,30 +413,46 @@ def experiment4(env, env_id, T=100, models_path_a=None, models_path_b=None, cove
 
     ab_recalls = []
     ba_recalls = []
-    results["a2b"] = dict()
-    results["b2a"] = dict()
+    ab_hit_times = []
+    ba_hit_times = []
+    for metric in ['coverage', 'hit_time']:
+        results[f"{metric}"] = dict()
+        results[f"{metric}"] = dict()
+        for type in ["a2b", "b2a"]:
+            results[f"{metric}"][f"{type}"] = dict()
+            results[f"{metric}"][f"{type}"] = dict()
+
     for trial_idx in range(ntrials):
         print(f"------------------experiment 4: trial #{trial_idx}-----------------")
 
-        ############# A -> B #############
-        epochs, ab_recall = exp4_loop(env, policy, models_path_a, covers_path_b, semi_metric=semi_metric, ngoals=ngoals, max_steps=T, vis=vis, eps_greedy=eps_greedy)
+        # A - > B
+        epochs, ab_recall, ab_hit_time = exp4_loop(env, policy, models_path_a, covers_path_b, semi_metric=semi_metric, ngoals=ngoals, max_steps=T, vis=vis, eps_greedy=eps_greedy)
         ab_recalls.append(ab_recall)
+        ab_hit_times.append(ab_hit_time)
 
-        results["a2b"]["mean"] = np.asarray(ab_recalls).mean(axis=0)
-        results["a2b"]["std"] = np.asarray(ab_recalls).std(axis=0)
-        results["a2b"]['method_name'] = r'$\alpha =$' + f"{0.0}"
-        results["a2b"]["epochs"] = epochs
-
-        ############# B -> A #############
-        epochs, ba_recall = exp4_loop(env, policy, models_path_b, covers_path_a, semi_metric=semi_metric, ngoals=ngoals, max_steps=T, vis=vis, eps_greedy=eps_greedy)
+        # B - > A
+        epochs, ba_recall, ba_hit_time = exp4_loop(env, policy, models_path_b, covers_path_a, semi_metric=semi_metric, ngoals=ngoals, max_steps=T, vis=vis, eps_greedy=eps_greedy)
         ba_recalls.append(ba_recall)
+        ba_hit_times.append(ba_hit_time)
 
-        results["b2a"]["mean"] = np.asarray(ba_recalls).mean(axis=0)
-        results["b2a"]["std"] = np.asarray(ba_recalls).std(axis=0)
-        results["b2a"]['method_name'] = r'$\alpha =$' + f"{0.5}"
-        results["b2a"]["epochs"] = epochs
+        for metric in ['coverage', 'hit_time']:
+            if metric == 'coverage':
+                ab_values = ab_recalls
+                ba_values = ba_recalls
+            elif metric == 'hit_time':
+                ab_values = ab_hit_times
+                ba_values = ba_hit_times
+            results[metric]["a2b"]["mean"] = np.asarray(ab_values).mean(axis=0)
+            results[metric]["a2b"]["std"] = np.asarray(ab_values).std(axis=0)
+            results[metric]["a2b"]['method_name'] = r'$\alpha =$' + f"{0.0}"
+            results[metric]["a2b"]["epochs"] = epochs
 
-        paper_utils.exp3_to_figure(results, save_directory=save_path, message=env_id)
+            results[metric]["b2a"]["mean"] = np.asarray(ba_values).mean(axis=0)
+            results[metric]["b2a"]["std"] = np.asarray(ba_values).std(axis=0)
+            results[metric]["b2a"]['method_name'] = r'$\alpha =$' + f"{0.5}"
+            results[metric]["b2a"]["epochs"] = epochs
+
+            paper_utils.exp3_to_figure(results[f"{metric}"], save_directory=save_path, message=f"{env_id}_{metric}")
 
 
 if __name__ == '__main__':

@@ -237,8 +237,10 @@ class MetricDiversifier:
         if not active:
             if len(self.open_slots()) > 0:
                 replace_idx = random.choice(self.open_slots())
-            else:
+            elif np.random.binomial(n=1, p=0.001):
                 replace_idx = random.choice(self.used_slots())
+            else:
+                return False
             self.occupy_idx(new_pnt, replace_idx, ref_idxs=[], distances_to_newpnt=None, distances_from_newpnt=None)
             return False
 

@@ -28,12 +28,13 @@ def plot(results, save_dir):
 
     for key, val in results.items():
         cover_plot(data=val, name=val["name"])
-    ax.legend(fontsize=20)
-    ax.set_facecolor('#ECE6E5')
+
     plt.title(f"Mean Hit Time", fontsize=20)
     plt.xlabel("Epochs", fontsize=20)
     plt.locator_params(nbins=4)
     ax.tick_params(axis='both', which='major', labelsize=20)
+    ax.legend(fontsize=20)
+    ax.set_facecolor('#ECE6E5')
     plt.grid(color='w', linestyle='--', linewidth=1)
     plt.tight_layout()
     plt.savefig(f"{save_dir}/hit_time.png")
@@ -203,9 +204,9 @@ def main(args):
 
     save_dir = set_default_value(extra_args, 'save_dir', "/")
 
-    d = 1
+    d = 10
     f=5
-    trail=3
+    trail=1
     if "scrb" in extra_args:
         fname = "scrb"
         mean = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_mean", normalize=False, dilute_fact=d, f=f)[:-trail]

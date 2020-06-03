@@ -92,8 +92,10 @@ def exp1_overlayed_figure(env, scrb:MetricDiversifier, save_directory, message):
 
 
 def list_epochs(directory):
-    model_names = os.listdir(directory)
-    return [int(model_name.split('_')[1].split('.')[0]) for model_name in model_names]
+    names = os.listdir(directory)
+    epochs = [int(model_name.split('_')[1].split('.')[0]) for model_name in names]
+    epochs.sort()
+    return epochs
 
 
 def exp2_to_figure(results, save_directory, message=""):
@@ -146,12 +148,14 @@ def exp3_to_figure(results, save_directory, message=""):
         os.makedirs(save_directory)
 
     fig_name = f"{save_directory}/{message}.png"
-    plt.title(f"{message}", fontsize=20)
+    # plt.title(f"{message}", fontsize=20)
     plt.xlabel("Epochs", fontsize=20)
     # plt.ylabel(f"%", fontsize=20)
     # plt.ylim([0, 1])
     plt.locator_params(nbins=4)
     ax.tick_params(axis='both', which='major', labelsize=20)
+    ax.set_facecolor('#ECE6E5')
+    plt.grid(color='w', linestyle='--', linewidth=1)
     plt.tight_layout()
     plt.savefig(fig_name)
     print(f"saved figure : {fig_name}")
