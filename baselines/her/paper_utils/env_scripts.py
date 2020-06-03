@@ -268,12 +268,10 @@ def exp3_loop(env, policy, models_path, covers_path, ngoals, max_steps, semi_met
     epochs.sort()
     epochs = [epoch for epoch in epochs if epoch % 25 == 0]
 
-    # TODO: we take the last model as the reference policy
-    model_path = f"{models_path}/epoch_{epochs[-1]}.model"
-    paper_utils.load_model(load_path=model_path)
-
     # epochs = epochs[:2]
-    for epoch_idx in epochs[:-1]:
+    for epoch_idx in epochs:
+        model_path = f"{models_path}/epoch_{epochs[-1]}.model"
+        paper_utils.load_model(load_path=model_path)
         cover_path = f"{covers_path}/epoch_{epoch_idx}.json"
         scrb = MetricDiversifier(k=100, vis=False, vis_coords=[0, 1], save_path=None, load_model=cover_path, reward_func=None)
         min_dist = scrb.M.min()
@@ -356,6 +354,83 @@ def experiment3(env, env_id, T=100, models_path=None, covers_path=None, save_pat
             paper_utils.exp3_to_figure(results, save_directory=save_path, message=f"{env_id}_{metric}")
 
 
+def exp4_loop(env, policy, models_path, covers_path, ngoals, max_steps, semi_metric, vis=False, eps_greedy=False):
+    recall_at_epoch = []
+    epochs = paper_utils.list_epochs(models_path)
+    epochs.sort()
+    epochs = [epoch for epoch in epochs if epoch % 25 == 0]
+    epochs = epochs[:4]
+    for epoch_idx in epochs:
+
+        cover_path = f"{covers_path}/epoch_{epoch_idx}.json"
+        scrb = MetricDiversifier(k=100, load_model=cover_path, reward_func=None)
+        ngoals = np.minimum(ngoals, scrb.k)
+        paper_utils.load_model(load_path=f"{models_path}/epoch_{epoch_idx}.model")
+        pnts = scrb.draw(ngoals, replace=False)
+        reached = np.zeros(len(pnts))
+        for pidx, pnt in enumerate(pnts):
+            goal = pnt['ag']
+            if reached[pidx]:
+                continue
+            if semi_metric:
+                obs = reset_env(env, scrb=scrb, mode='intrinsic')
+            else:
+                refidx = pidx
+                while refidx == pidx:
+                    refidx = random.choice([i for i in range(len(pnts))])
+                refpnt = pnts[refidx]
+                obs = init_from_point(env, refpnt)
+            env.env.set_goal(goal=np.asarray(goal))
+            for t in range(max_steps):
+                if reached[pidx]:
+                    break
+                if vis:
+                    env.render()
+                    time.sleep(.01)
+                action, _, state, _ = policy.step(obs)
+                if eps_greedy and t % 10 == 0:
+                    action = env.action_space.sample()
+                obs, reward, done, info = env.step(action)
+                if info['is_success']:
+                    reached[pidx] = 1
+        recall_at_epoch.append(reached.mean())
+    return epochs, recall_at_epoch
+
+
+def experiment4(env, env_id, T=100, models_path_a=None, models_path_b=None, covers_path_a=None, covers_path_b=None,
+                save_path=None, eps_greedy=False, ntrials=5, ngoals=100, vis=False, semi_metric=False, **kwargs):
+    policy, reward_fun = paper_utils.load_policy(env_id, **kwargs)
+
+    results = dict()
+
+    ab_recalls = []
+    ba_recalls = []
+    results["a2b"] = dict()
+    results["b2a"] = dict()
+    for trial_idx in range(ntrials):
+        print(f"------------------experiment 4: trial #{trial_idx}-----------------")
+
+        ############# A -> B #############
+        epochs, ab_recall = exp4_loop(env, policy, models_path_a, covers_path_b, semi_metric=semi_metric, ngoals=ngoals, max_steps=T, vis=vis, eps_greedy=eps_greedy)
+        ab_recalls.append(ab_recall)
+
+        results["a2b"]["mean"] = np.asarray(ab_recalls).mean(axis=0)
+        results["a2b"]["std"] = np.asarray(ab_recalls).std(axis=0)
+        results["a2b"]['method_name'] = r'$\alpha =$' + f"{0.0}"
+        results["a2b"]["epochs"] = epochs
+
+        ############# B -> A #############
+        epochs, ba_recall = exp4_loop(env, policy, models_path_b, covers_path_a, semi_metric=semi_metric, ngoals=ngoals, max_steps=T, vis=vis, eps_greedy=eps_greedy)
+        ba_recalls.append(ba_recall)
+
+        results["b2a"]["mean"] = np.asarray(ba_recalls).mean(axis=0)
+        results["b2a"]["std"] = np.asarray(ba_recalls).std(axis=0)
+        results["b2a"]['method_name'] = r'$\alpha =$' + f"{0.5}"
+        results["b2a"]["epochs"] = epochs
+
+        paper_utils.exp3_to_figure(results, save_directory=save_path, message=env_id)
+
+
 if __name__ == '__main__':
     arg_parser = common_arg_parser()
     args, unknown_args = arg_parser.parse_known_args(sys.argv)
@@ -381,3 +456,10 @@ if __name__ == '__main__':
         assert extra_args['covers_path'] is not None, 'covers path is none'
         assert args.save_path is not None, 'save path is none'
         experiment3(env=environment, env_id=args.env, save_path=args.save_path, **extra_args)
+    elif extra_args['option'] == 'experiment4':
+        assert extra_args['models_path_a'] is not None, 'models path is none'
+        assert extra_args['models_path_b'] is not None, 'models path is none'
+        assert extra_args['covers_path_a'] is not None, 'covers path is none'
+        assert extra_args['covers_path_b'] is not None, 'covers path is none'
+        assert args.save_path is not None, 'save path is none'
+        experiment4(env=environment, env_id=args.env, save_path=args.save_path, **extra_args)

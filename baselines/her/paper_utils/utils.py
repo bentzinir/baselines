@@ -154,5 +154,4 @@ def exp3_to_figure(results, save_directory, message=""):
     ax.tick_params(axis='both', which='major', labelsize=20)
     plt.tight_layout()
     plt.savefig(fig_name)
-
     print(f"saved figure : {fig_name}")

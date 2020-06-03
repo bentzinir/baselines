@@ -230,8 +230,16 @@ class MetricDiversifier:
                 return True
         return False
 
-    def load_new_point(self, new_pnt, d_func=None):
+    def load_new_point(self, new_pnt, d_func=None, active=True):
         if new_pnt is None:
+            return False
+
+        if not active:
+            if len(self.open_slots()) > 0:
+                replace_idx = random.choice(self.open_slots())
+            else:
+                replace_idx = random.choice(self.used_slots())
+            self.occupy_idx(new_pnt, replace_idx, ref_idxs=[], distances_to_newpnt=None, distances_from_newpnt=None)
             return False
 
         # Not fully occupied

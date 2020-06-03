@@ -112,7 +112,9 @@ def train(*, policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cyc
             mca.update_age()
 
         print(f"Percentage of invalidations: {np.asarray(invalids).mean()}, average ep length: {np.asarray(lengths).mean()}")
-        if alpha > 0:
+        # TODO: hide back after debug
+        # if alpha > 0:
+        if True:
             mca.refresh_cells(n=500)
             mca.update_metric_model(n=nscrb_updates)
 
@@ -308,7 +310,7 @@ def learn(*, network, env, mca_env, total_timesteps,
               evaluator=mca_evaluator,
               state_model=state_model_vec,
               coord_dict=coord_dict,
-              ss=ss)
+              active=(alpha>0))
     ##############################################################################
 
     if 'n_epochs' not in kwargs:

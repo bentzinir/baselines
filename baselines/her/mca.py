@@ -3,7 +3,8 @@ import random
 
 
 class MCA:
-    def __init__(self, policy, semi_metric, rollout_worker, evaluator, state_model, coord_dict, ss=False):
+    def __init__(self, policy, semi_metric, rollout_worker, evaluator, state_model, coord_dict, active):
+        print(f"==================Creating MCA module. active={active}==========================")
         self.policy = policy
         self.semi_metric = semi_metric
         self.ncells = len(state_model)
@@ -11,10 +12,10 @@ class MCA:
         self.evaluator = evaluator
         self.state_model = state_model
         self.best_success_rate = -1
-        self.ss = ss
         self.ex_experience = None
         self.coord_dict = coord_dict
         self.log_hit_time = True
+        self.active = active
 
     @staticmethod
     def sample_2_dict(x):
@@ -123,49 +124,49 @@ class MCA:
         for o, ag, qpos, qvel, cidx in zip(batch['o'], batch['ag'], batch['qpos'], batch['qvel'], cidxs):
             assert ag is not None
             new_point = self.state_model[int(cidx)].init_record(o=o.copy(), ag=ag.copy(), qpos=qpos.copy(), qvel=qvel.copy())
-            updated = self.state_model[cidx].load_new_point(new_point, d_func=state_model_dfunc)
+            updated = self.state_model[cidx].load_new_point(new_point, d_func=state_model_dfunc, active=self.active)
             nupdates += updated
             counter += 1
             print(f"\r>> Updating metric model {counter}/{int(n)}", end='')
         print(f' ... Done!, # of updates: {nupdates}')
 
-    def load_episode(self, episode):
-        if episode is None:
-            return
-        obs = episode['o']
-        if self.ss:
-            agoals = episode['o']
-        else:
-            agoals = episode['ag']
-        if 's_info' in episode:
-            _, nsteps, _ = np.asarray(episode['s_info']).shape
-            obs = obs[:, :nsteps, :]
-            agoals = agoals[:, :nsteps, :]
-            obs = np.reshape(obs, (-1, obs.shape[-1]))
-            ags = np.reshape(agoals, (-1, agoals.shape[-1]))
-            infos = [j for sub in episode['s_info'] for j in sub]
-        else:
-            obs = np.reshape(obs, (-1, obs.shape[-1]))
-            ags = np.reshape(agoals, (-1, agoals.shape[-1]))
-            infos = np.full(obs.shape, None)
-
-        p = np.random.permutation(len(obs))
-        # if len(p) > self.n_samples:
-        #     p = p[:self.n_samples]
-        obs = obs[p]
-        ags = ags[p]
-        infos = [infos[p_idx] for p_idx in p]
-
-        for ob, ag, info in zip(obs, ags, infos):
-            if hasattr(info, '_asdict'):
-                info = info._asdict()
-            new_point = self.state_model.init_record(x=ob, x_feat=ag, info=info)
-            if self.tmp_point['x'] is None:
-                self.tmp_point = new_point
-            self.state_model.load_new_point(new_point, d_func=self.policy.get_actions)
-
-        if 's_info' in episode:
-            del episode['s_info']
+    # def load_episode(self, episode):
+    #     if episode is None:
+    #         return
+    #     obs = episode['o']
+    #     if self.ss:
+    #         agoals = episode['o']
+    #     else:
+    #         agoals = episode['ag']
+    #     if 's_info' in episode:
+    #         _, nsteps, _ = np.asarray(episode['s_info']).shape
+    #         obs = obs[:, :nsteps, :]
+    #         agoals = agoals[:, :nsteps, :]
+    #         obs = np.reshape(obs, (-1, obs.shape[-1]))
+    #         ags = np.reshape(agoals, (-1, agoals.shape[-1]))
+    #         infos = [j for sub in episode['s_info'] for j in sub]
+    #     else:
+    #         obs = np.reshape(obs, (-1, obs.shape[-1]))
+    #         ags = np.reshape(agoals, (-1, agoals.shape[-1]))
+    #         infos = np.full(obs.shape, None)
+    #
+    #     p = np.random.permutation(len(obs))
+    #     # if len(p) > self.n_samples:
+    #     #     p = p[:self.n_samples]
+    #     obs = obs[p]
+    #     ags = ags[p]
+    #     infos = [infos[p_idx] for p_idx in p]
+    #
+    #     for ob, ag, info in zip(obs, ags, infos):
+    #         if hasattr(info, '_asdict'):
+    #             info = info._asdict()
+    #         new_point = self.state_model.init_record(x=ob, x_feat=ag, info=info)
+    #         if self.tmp_point['x'] is None:
+    #             self.tmp_point = new_point
+    #         self.state_model.load_new_point(new_point, d_func=self.policy.get_actions)
+    #
+    #     if 's_info' in episode:
+    #         del episode['s_info']
 
     def q2cellidx(self, q_vals):
         return np.clip(q_vals, 1e-4, self.rollout_worker.T - 1e-4).astype(np.int)
