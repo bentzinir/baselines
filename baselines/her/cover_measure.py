@@ -173,7 +173,13 @@ def parse_horizon(logfile):
     return float(t_lines[0].split(' ')[-1])
 
 
-def parse_log(logfile, field_name, normalize=False, dilute_fact=5):
+def smooth(y, box_pts):
+    box = np.ones(box_pts)/box_pts
+    y_smooth = np.convolve(y, box, mode='same')
+    return y_smooth
+
+
+def parse_log(logfile, field_name, normalize=False, dilute_fact=5, f=1):
     with open(logfile, "r") as fid:
         lines = fid.read().splitlines()
         values = np.asarray([float(line.split('|')[-2]) for line in lines if field_name in line])
@@ -182,6 +188,7 @@ def parse_log(logfile, field_name, normalize=False, dilute_fact=5):
             values = values / values.max()
         # if scale:
         #     values *= scale
+        values = smooth(values, f)
     return values[::dilute_fact]
 
 
@@ -196,11 +203,13 @@ def main(args):
 
     save_dir = set_default_value(extra_args, 'save_dir', "/")
 
-    d = 7
+    d = 1
+    f=5
+    trail=3
     if "scrb" in extra_args:
         fname = "scrb"
-        mean = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_mean", normalize=False, dilute_fact=d)
-        std = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_std", normalize=False, dilute_fact=d)
+        mean = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_mean", normalize=False, dilute_fact=d, f=f)[:-trail]
+        std = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_std", normalize=False, dilute_fact=d, f=f)[:-trail]
         results[fname] = dict()
         results[fname]["mean"] = mean
         results[fname]["std"] = std
@@ -209,8 +218,8 @@ def main(args):
 
     if "plain" in extra_args:
         fname = "plain"
-        mean = parse_log(f"{plain_log_dir}/log.txt", field_name="test/hit_time_mean", normalize=False, dilute_fact=d)
-        std = parse_log(f"{plain_log_dir}/log.txt", field_name="test/hit_time_std", normalize=False, dilute_fact=d)
+        mean = parse_log(f"{plain_log_dir}/log.txt", field_name="test/hit_time_mean", normalize=False, dilute_fact=d, f=f)[:-trail]
+        std = parse_log(f"{plain_log_dir}/log.txt", field_name="test/hit_time_std", normalize=False, dilute_fact=d, f=f)[:-trail]
         results[fname] = dict()
         results[fname]["mean"] = mean
         results[fname]["std"] = std
