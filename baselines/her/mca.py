@@ -130,44 +130,6 @@ class MCA:
             print(f"\r>> Updating metric model {counter}/{int(n)}", end='')
         print(f' ... Done!, # of updates: {nupdates}')
 
-    # def load_episode(self, episode):
-    #     if episode is None:
-    #         return
-    #     obs = episode['o']
-    #     if self.ss:
-    #         agoals = episode['o']
-    #     else:
-    #         agoals = episode['ag']
-    #     if 's_info' in episode:
-    #         _, nsteps, _ = np.asarray(episode['s_info']).shape
-    #         obs = obs[:, :nsteps, :]
-    #         agoals = agoals[:, :nsteps, :]
-    #         obs = np.reshape(obs, (-1, obs.shape[-1]))
-    #         ags = np.reshape(agoals, (-1, agoals.shape[-1]))
-    #         infos = [j for sub in episode['s_info'] for j in sub]
-    #     else:
-    #         obs = np.reshape(obs, (-1, obs.shape[-1]))
-    #         ags = np.reshape(agoals, (-1, agoals.shape[-1]))
-    #         infos = np.full(obs.shape, None)
-    #
-    #     p = np.random.permutation(len(obs))
-    #     # if len(p) > self.n_samples:
-    #     #     p = p[:self.n_samples]
-    #     obs = obs[p]
-    #     ags = ags[p]
-    #     infos = [infos[p_idx] for p_idx in p]
-    #
-    #     for ob, ag, info in zip(obs, ags, infos):
-    #         if hasattr(info, '_asdict'):
-    #             info = info._asdict()
-    #         new_point = self.state_model.init_record(x=ob, x_feat=ag, info=info)
-    #         if self.tmp_point['x'] is None:
-    #             self.tmp_point = new_point
-    #         self.state_model.load_new_point(new_point, d_func=self.policy.get_actions)
-    #
-    #     if 's_info' in episode:
-    #         del episode['s_info']
-
     def q2cellidx(self, q_vals):
         return np.clip(q_vals, 1e-4, self.rollout_worker.T - 1e-4).astype(np.int)
 
