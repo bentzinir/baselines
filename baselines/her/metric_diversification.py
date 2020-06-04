@@ -310,7 +310,19 @@ class MetricDiversifier:
         # return len(self.buffer)
 
     @staticmethod
-    def init_record(o=None, ag=None, qpos=None, qvel=None):
+    def old_init_record(x=None, x_feat=None, qpos=None, qvel=None, **kwargs):
+        if x_feat is None:
+            ag = x
+        else:
+            ag = x_feat
+        if qpos is None:
+            qpos = np.empty(1)
+        if qvel is None:
+            qvel = np.empty(1)
+        return {'o': np.asarray(x), 'ag': np.asarray(ag), 'qpos': qpos, 'qvel': qvel}
+
+    @staticmethod
+    def init_record(o=None, ag=None, qpos=None, qvel=None, **kwargs):
         if ag is None:
             ag = o
         if qpos is None:
@@ -341,7 +353,10 @@ class MetricDiversifier:
             k = len(json_buffer)
             self.init_buffers(k)
         for key, val in json_buffer.items():
-            new_pnt = self.init_record(**val)
+            if 'x_feat' in val:
+                new_pnt = self.old_init_record(**val)
+            else:
+                new_pnt = self.init_record(**val)
             idx = random.choice(self.open_slots())
             self.occupy_idx(new_pnt, idx, ref_idxs=[], distances_to_newpnt=None, distances_from_newpnt=None)
         for idx in self.used_slots():
