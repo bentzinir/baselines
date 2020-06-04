@@ -56,6 +56,8 @@ def scan_cover(env, action_repetition=1, cover_path=None, **kwargs):
 
 def plain_loop(env, action_repetition=1, clip_range=0.5, **kwargs):
     reset_env(env, scrb=None, mode='intrinsic')
+    print(f"Obs: {env.observation_space['observation'].shape}, goal: {env.observation_space['achieved_goal'].shape}, action: {env.action_space.shape}")
+    sys.exit()
     i = 0
     while True:
         i += 1

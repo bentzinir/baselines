@@ -4,6 +4,8 @@ import sys
 import numpy as np
 from matplotlib import pyplot as plt
 from baselines.common.misc_util import set_default_value
+import os
+from pathlib import Path
 
 
 def reward_fun(env, ag_2, g, info):  # vectorized
@@ -193,39 +195,72 @@ def parse_log(logfile, field_name, normalize=False, dilute_fact=5, f=1):
     return values[::dilute_fact]
 
 
+def extract_log_files(directory, patterns=[]):
+    log_files = []
+    for path in Path(directory).rglob('log.txt'):
+        pattern_matches = [False for pattern in patterns if pattern not in str(path)]
+        if not False in pattern_matches:
+            log_files.append(str(path))
+    return log_files
+
+
+def method_to_log_pattern(method):
+    if method == "plain":
+        log_pattern = "alpha0/"
+        legend_name = r'$\alpha =$' + f"{0}"
+    elif method == "scrb":
+        log_pattern = "alpha05/"
+        legend_name = r'$\alpha =$' + f"{0.5}"
+    else:
+        log_pattern = ""
+        legend_name = ""
+    return log_pattern, legend_name
+
+
 def main(args):
     arg_parser = common_arg_parser()
     args, unknown_args = arg_parser.parse_known_args(args)
     extra_args = parse_cmdline_kwargs(unknown_args)
-    scrb_log_dir = extra_args["scrb"]
-    plain_log_dir = extra_args["plain"]
-
+    base_dir = extra_args["base_dir"]
+    name = extra_args["name"]
     results = dict()
 
     save_dir = set_default_value(extra_args, 'save_dir', "/")
 
+    std_type = 1
     d = 10
-    f=5
-    trail=1
-    if "scrb" in extra_args:
-        fname = "scrb"
-        mean = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_mean", normalize=False, dilute_fact=d, f=f)[:-trail]
-        std = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_std", normalize=False, dilute_fact=d, f=f)[:-trail]
-        results[fname] = dict()
-        results[fname]["mean"] = mean
-        results[fname]["std"] = std
-        results[fname]["xscale"] = d
-        results[fname]["name"] = r'$\alpha =$' + f"{0.5}"
+    f = 1
+    trail = 1
 
-    if "plain" in extra_args:
-        fname = "plain"
-        mean = parse_log(f"{plain_log_dir}/log.txt", field_name="test/hit_time_mean", normalize=False, dilute_fact=d, f=f)[:-trail]
-        std = parse_log(f"{plain_log_dir}/log.txt", field_name="test/hit_time_std", normalize=False, dilute_fact=d, f=f)[:-trail]
-        results[fname] = dict()
-        results[fname]["mean"] = mean
-        results[fname]["std"] = std
-        results[fname]["xscale"] = d
-        results[fname]["name"] = r'$\alpha =$' + f"{0}"
+    for method in ['scrb', 'plain']:
+        log_pattern, legend_name = method_to_log_pattern(method)
+        log_files = extract_log_files(base_dir, patterns=[name, log_pattern])
+        values = []
+        stds = []
+        length = np.inf
+        for logfile in log_files:
+            value = parse_log(logfile, field_name="test/hit_time_mean", normalize=False, dilute_fact=d, f=f)[:-trail]
+            std = parse_log(logfile, field_name="test/hit_time_std", normalize=False, dilute_fact=d, f=f)[:-trail]
+            values.append(value)
+            stds.append(std)
+            if len(value) < length:
+                length = len(value)
+            # std = parse_log(f"{scrb_log_dir}/log.txt", field_name="test/hit_time_std", normalize=False, dilute_fact=d, f=f)[:-trail]
+
+        values = [value[:length] for value in values]
+        stds = [std[:length] for std in stds]
+
+        if std_type == 1:
+            standard_deviation = np.mean(stds, axis=0)
+        else:
+            standard_deviation = np.std(values, axis=0)
+        results[method] = dict()
+        results[method]["mean"] = np.mean(values, axis=0)
+        results[method]["std"] = standard_deviation
+        results[method]["xscale"] = d
+        results[method]["name"] = legend_name
+
+    plot(results, save_dir)
 
     # results["test success"] = dict()
     # results["test success"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name="test/success_rate", normalize=False, scale=100)
@@ -267,7 +302,7 @@ def main(args):
     #     results[f"{k}"]["mean"] = parse_log(f"{log_directory}/log.txt", field_name=fmean, normalize=False)
     #     results[f"{k}"]["std"] = parse_log(f"{log_directory}/log.txt", field_name=fstd, normalize=False)
     #     results[f"{k}"]["xscale"] = 50
-    plot(results, save_dir)
+
 
 
 if __name__ == '__main__':
